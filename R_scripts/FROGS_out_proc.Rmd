@@ -1,0 +1,518 @@
+# FROGS output processing
+
+```{r}
+EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl"))
+```
+
+
+## prepare metabarlist
+
+
+
+Load site metadata
+```{r}
+test <- readxl::read_xlsx("../ressource/DataSheet1_edaphic_data_mapp_shitty_version.xlsx",sheet = 2)
+```
+
+
+
+```{r}
+path_frogs_out <- "../ressource/bioinfo_pipeline_FROGS/FROGS_galaxy_outputs/"
+folder_names <- list.files(path_frogs_out)
+folder_names <- folder_names[3]
+boots_thshld <- 0.7
+metab_lists<- NULL
+for(i in folder_names){
+    
+    data_tmp <- read_delim(paste0(path_frogs_out,i,"/Galaxy34-[FROGS_BIOM_to_TSV__abundance.tsv].tsv"), 
+                           delim = "\t", escape_double = FALSE, 
+                           trim_ws = TRUE)
+    
+    reads_frame <- t(as.matrix(data_tmp[,colnames(data_tmp)[grepl("L001",colnames(data_tmp))]]))
+    colnames(reads_frame) <- data_tmp$observation_name
+    
+    
+    motus_frame <- data_tmp[,colnames(data_tmp)[!grepl("L001",colnames(data_tmp))]]
+    
+    motus_frame %<>% dplyr::rename(sequence=seed_sequence)
+    motus_frame %<>% mutate(rdp_tax_and_bootstrap=gsub("\\(|\\)","",rdp_tax_and_bootstrap))
+    motus_frame %<>% mutate(blast_taxonomy=ifelse(blast_taxonomy=="no data","k__;p__;c__;o__;f__;g__;s__",blast_taxonomy))
+    motus_frame %<>% separate(rdp_tax_and_bootstrap,
+                              into=c("Kingdom","boots_Kingdom",
+                                     "Phylum","boots_Phylum",
+                                     "Class","boots_Class",
+                                     "Order","boots_Order",
+                                     "Family","boots_Family",
+                                     "Genus","boots_Genus",
+                                     "Species","boots_Species"),
+                              sep=";",
+                              remove = F)%>%
+        separate(blast_taxonomy,
+                 into=c("blast_Kingdom",
+                        "blast_Phylum",
+                        "blast_Class",
+                        "blast_Order",
+                        "blast_Family",
+                        "blast_Genus",
+                        "blast_Species"),
+                 sep=";",
+                 remove = F)%>%
+        mutate(across(.cols=which(grepl("boots_",colnames(.))),.fns=as.numeric))
+        # mutate(Kingdom=ifelse(boots_Kingdom<boots_thshld,"k_",Kingdom),
+        #        Phylum=ifelse(boots_Phylum<boots_thshld,"p_",Phylum),
+        #        Class=ifelse(boots_Class<boots_thshld,"c_",Class),
+        #        Order=ifelse(boots_Order<boots_thshld,"o_",Order),
+        #        Family=ifelse(boots_Family<boots_thshld,"f_",Family),
+        #        Genus=ifelse(boots_Genus<boots_thshld,"g_",Genus),
+        #        Species=ifelse(boots_Species<boots_thshld,"s_",Species))
+    rownames(motus_frame) <- motus_frame$observation_name
+    
+    
+    
+    pcr_frame <- data.frame(sample_id=colnames(data_tmp)[grep("L001",colnames(data_tmp))], type="sample",control_type=NA)
+    rownames(pcr_frame) <- pcr_frame$sample_id
+    
+    sample_frame <- data.frame(sample_id=colnames(data_tmp)[grep("L001",colnames(data_tmp))])
+    rownames(sample_frame) <- sample_frame$sample_id
+    
+    
+    metab_lists[[i]] <- metabarlist_generator(reads = reads_frame,
+                                              motus = motus_frame,
+                                              pcrs = pcr_frame,
+                                              samples = sample_frame
+    )
+}
+```
+## Start MetabaR processing
+
+
+Plot number of OTUs and reads per PCRs as well as their correlation.
+Correlation between reads and richness are problematic as they might indicate insufficient sequencing depth.
+```{r}
+diag_plots <- NULL
+for (i in 1:length(folder_names)){
+  data_temp <- metab_lists[[folder_names[i]]]
+  
+  # Compute the number of reads per pcr
+  data_temp$pcrs$nb_reads <- rowSums(data_temp$reads)
+  
+  # Compute the number of motus per pcr
+  data_temp$pcrs$nb_motus <- rowSums(data_temp$reads>0)
+  
+  # Overwrite with these new info
+  metab_lists[[folder_names[i]]] <- data_temp
+  
+  check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "nb_reads", "nb_motus")])
+  
+  p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) + 
+      geom_boxplot() + 
+      theme_bw() + 
+      geom_jitter(alpha=0.2) + 
+      scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey") +
+      facet_wrap(~variable, scales = "free_y") +
+      ggtitle(folder_names[[i]])+ 
+      theme(axis.text.x = element_text(angle=45, h=1),
+            plot.title = element_text(face="bold"))
+  
+  p2 <-  ggplot(data_temp$pcrs, aes(x=nb_reads, y=nb_motus, color = control_type)) + 
+      geom_point() + 
+      theme_bw() + 
+      scale_y_log10() + 
+      scale_x_log10() + 
+      scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey")
+  
+  diag_plots[[folder_names[i]]] <- p1 + p2 + plot_layout(guides="collect")
+} 
+
+diagplot <- ggarrange(plotlist = diag_plots, ncol = 1, nrow = length(diag_plots), common.legend = T, legend = "bottom")
+```
+
+
+
+Flag pcrs according to seq depths
+```{r}
+plot_seq_depth <- NULL
+seq_depth_tab <- NULL
+for (i in 1:length(folder_names)){
+
+  data_temp <- metab_lists[[folder_names[i]]]
+  plot_seq_depth[[folder_names[i]]] <-  ggplot(data_temp$pcrs, aes(nb_reads)) +
+    geom_histogram(bins = 40, color="grey", fill="white") + 
+    geom_vline(xintercept = 1e3, lty=2, color="orange") + # threshold
+    scale_x_log10() + 
+    labs(x="# Reads (with all MOTUs and PCRs)", 
+         y="# PCRs") +
+    theme_bw() +
+    ggtitle(folder_names[[i]])+ 
+    theme(panel.grid = element_blank(),
+            plot.title = element_text(face="bold"))
+  
+  # Tag as ok pcrs with more than 1000 reads
+  data_temp$pcrs$seqdepth_ok <- ifelse(data_temp$pcrs$nb_reads < 1e3, F, T)
+  
+  # Overwrite
+  metab_lists[[folder_names[i]]] <- data_temp 
+  
+  # proportion of innaceptable pcrs seq depth, control excluded!!
+  seq_depth_tab[[folder_names[i]]] <- table(data_temp$pcrs$seqdepth_ok[data_temp$pcrs$type=="sample"]) /
+    nrow(data_temp$pcrs[data_temp$pcrs$type=="sample",])
+  print(seq_depth_tab[[i]])
+}
+plotseqdepth <- ggarrange(plotlist =  plot_seq_depth, ncol = 1,nrow = length(folder_names))
+
+```
+
+
+Tag as poorly assigned Sequences with no assignment at the kingdom lvl (ie with RDP bootstrap values <70: boots_thshld choosen earlier) 
+```{r}
+plot_tax_boots <- NULL
+for (i in 1:length(folder_names)){
+  
+  data_temp <- metab_lists[[folder_names[i]]]
+  melty <- melt(data_temp$motus, id = c(colnames(data_temp$motus)[which(grepl("boots_",colnames(data_temp$motus))==F)] ))
+  melty$variable <- gsub("boots_","",melty$variable)
+  melty$variable <- as.factor(melty$variable)
+  
+  melty$variable <- fct_relevel(melty$variable,"Kingdom","Phylum","Class","Order","Family","Genus","Species")
+  
+  
+  plot_tax_boots[[folder_names[i]]] <-  ggplot(melty,aes(x=variable,y=as.numeric(value))) +
+      geom_boxplot(aes(fill=variable))+
+      theme_bw()+
+      ggtitle(folder_names[[i]])+
+      labs(y="conf %")+
+      theme(panel.grid.major.x = element_blank(),
+            panel.grid.minor.x = element_blank(),
+            axis.title.x = element_blank())+
+      theme(legend.position = "n",
+            plot.title = element_text(face = "bold"))
+  
+  # Create a "confident taxonomy" (boots >= boots_thshld)
+  colnames_tmp <- c(gsub("boots_","",grep("boots_",colnames(data_temp$motus), value = T)))
+  
+  for(j in 1:length(colnames_tmp)){
+    
+    col <- match(colnames_tmp[j],colnames(data_temp$motus))
+    a <- data_temp$motus[,c(col,col+1)]
+    conf <- a %>% mutate(col_temp=ifelse(.[[2]]<boots_thshld,gsub("(?<=__).*","",.[[1]],perl=T),.[[1]]))
+    data_temp$motus <- cbind(data_temp$motus,conf[,3])
+    colnames(data_temp$motus)[ncol(data_temp$motus)]<- paste0(colnames_tmp[j],"_conf_rdp")
+  }
+  
+    # Tag sequences not assigned below Kingdom
+  data_temp$motus %<>% mutate(good_assign = ifelse(Phylum_conf_rdp=="p__",F,T))
+  
+  # Overwrite
+  metab_lists[[folder_names[i]]] <- data_temp
+  
+}
+
+plottaxboots <- ggarrange(plotlist =  plot_tax_boots, ncol = 1,nrow = ceiling(length(plot_tax_boots)/2))
+```
+
+Tag non target ASVs
+```{r}
+non_target_prop <- NULL
+non_targetconta_prop <- NULL
+for (i in 1:length(folder_names)){
+  
+  data_temp <- metab_lists[[folder_names[i]]]
+  
+  target <- dplyr::last(BBmisc::explode(folder_names[i],"_")) # get current target
+  target_kingdom <- ifelse(target=="16s","Bacteria|Archaea", ifelse(target=="18s","Eukaryota","Bacteria|Archaea|Eukaryota")) # what do we target
+  
+  #Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
+  data_temp$motus$target_taxon <- grepl(target_kingdom, data_temp$motus$Kingdom_conf_rdp)==grepl(target_kingdom,data_temp$motus$blast_Kingdom)
+  
+  # Proportion of each of these over total number of MOTUs
+  non_target_prop[[folder_names[i]]] <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
+  
+  # Intersection with extraction contaminant flags (not contaminant = T)
+  non_target_prop[[folder_names[i]]] <- table(data_temp$motus$target_taxon)
+  print(non_target_prop[[i]])
+  
+  # Overwrite
+  metab_lists[[folder_names[i]]] <- data_temp
+}
+```
+
+TAG jump slaying | Tough without controls. Pbly dont change it
+```{r}
+plot_tag_jump <- NULL
+
+for (i in 1:length(folder_names)){
+  
+  data_temp <- metab_lists[[folder_names[i]]]
+  rownames(data_temp$motus) <- colnames(data_temp$reads)
+  # Define a vector of thresholds to test
+  thresholds <- c(0,1e-4,1e-3, 1e-2, 3e-2, 5e-2) 
+  
+  # Run the tests and stores the results in a list
+  tests <- lapply(thresholds, function(x) tagjumpslayer(data_temp,x))
+  names(tests) <- paste("t_", thresholds, sep="")
+  
+  # Format the data for ggplot with amount of reads at each threshold
+  tmp <- reshape2::melt(as.matrix(do.call("rbind", lapply(tests, function(x) rowSums(x$reads)))))
+  colnames(tmp) <- c("threshold", "sample", "abundance")
+  
+  # Add richness in MOTUs at each threshold
+  tmp$richness <-
+    reshape2::melt(as.matrix(do.call("rbind", lapply(tests, function(x) {
+      rowSums(x$reads > 0)
+    }))))$value
+  
+  # Add control type information on pcrs and make data curation threshold numeric
+  tmp$controls <- data_temp$pcrs$control_type[match(tmp$sample, rownames(data_temp$pcrs))]
+  tmp$threshold <- as.numeric(gsub("t_", "", tmp$threshold))
+  
+  # New table formatting for ggplot
+  tmp2 <- reshape2::melt(tmp, id.vars=colnames(tmp)[-grep("abundance|richness", colnames(tmp))])
+  
+  plot_tag_jump[[folder_names[i]]] <- ggplot(tmp2, aes(x=as.factor(threshold), y=value)) + 
+    geom_boxplot(color="grey40") + 
+    geom_vline(xintercept = which(levels(as.factor(tmp2$threshold)) == "0.01"), col="orange", lty=2) + 
+    geom_jitter(aes(color=controls), width = 0.2, alpha=0.5) + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey") +
+    facet_wrap(~variable+controls, scale="free_y", ncol=4) + 
+    theme_bw() + 
+    scale_y_log10() +
+    labs(x="MOTU pcr : total abundance filtering threshold", y="# Reads/MOTUs") +
+    ggtitle(folder_names[[i]])+ 
+    theme(panel.grid = element_blank(), 
+          strip.background = element_blank(), 
+          axis.text.x = element_text(angle=40, h=1), 
+          legend.position = "none",
+          plot.title = element_text(face="bold"))
+  
+  tests[["raw"]] <- data_temp
+  metab_lists[[folder_names[i]]] <- tests 
+}
+
+plottagjump <- ggarrange(plotlist =  plot_tag_jump, ncol = 1,nrow = ceiling(length(folder_names)/2))
+
+```
+
+
+summarize noise in motus
+```{r}
+# color_scale (create a common scale across datasets)
+a <- unlist(combn(c("untargeted_taxon","poorly_assigned"),1,simplify = F))
+b <- c("poorly_assigned|untargeted_taxon")
+myColors <- RColorBrewer::brewer.pal(8,"Set1")
+names(myColors) <- levels(as.factor(c(a,b,"not_artefactual")))
+colScale <- scale_fill_manual(name = "grp",values = myColors, drop=F)
+
+
+plot_noise_motu <- NULL
+motu_noise_tab <- NULL
+for (i in 1:length(folder_names)){
+  
+  data_temp <- metab_lists[[folder_names[i]]]["raw"][[1]]
+  
+  # Create a table of MOTUs quality criteria 
+  # noise is identified as FALSE in data_temp, the "!" transforms it to TRUE 
+  motus.qual <- !data_temp$motus[,c("target_taxon","good_assign")] #not_degraded 
+  colnames(motus.qual) <- c("untargeted_taxon","poorly_assigned") #degraded_seq  
+  
+  # Proportion of MOTUs potentially artifactual (TRUE) based on the criteria used
+  motu_noise_tab[[folder_names[i]]]$motus <- prop.table(table(apply(motus.qual, 1, sum) > 0))
+  
+  # Corresponding proportion of artifactual reads (TRUE)
+  motu_noise_tab[[folder_names[i]]]$reads <- prop.table(xtabs(data_temp$motus$observation_sum~apply(motus.qual, 1, sum) > 0))
+  
+  # Proportion of MOTUs and reads potentially artifactual for each criterion
+  apply(motus.qual, 2, sum) / nrow(motus.qual)
+  apply(motus.qual, 2, function(x) sum(data_temp$motus$observation_sum[x])/sum(data_temp$motus$observation_sum))
+  
+  tmp.motus <- 
+    apply(sapply(1:ncol(motus.qual), function(x) {
+      ifelse(motus.qual[,x]==T, colnames(motus.qual)[x], NA)}), 1, function(x) {
+        paste(sort(unique(x)), collapse = "|")
+      })
+  tmp.motus <- as.data.frame(gsub("^$", "not_artefactual", tmp.motus))
+  colnames(tmp.motus) <-  "artefact_type"
+  tmp.motus %<>% mutate(artefact_type=as.factor(artefact_type)  )
+  
+  plot_noise_motu[[folder_names[i]]] <- ggplot(tmp.motus, aes(x=1, fill=artefact_type)) +
+    geom_bar() +  xlim(0, 2) +
+    labs(fill="Artifact type") + 
+    coord_polar(theta="y") + theme_void() + 
+    scale_fill_manual(name = "grp",values = myColors, drop=F) + 
+    theme(legend.direction = "vertical") + 
+    ggtitle(folder_names[i])+
+    theme(plot.title = element_text(face="bold"))
+}
+```
+
+
+Choosen threshold for tagjumps
+```{r}
+chsn_thrshld <- rep("t_0")
+
+cleaned_metablist <- NULL
+summary_list <- NULL
+sumpipeline_plots <- NULL
+for (i in 1:length(folder_names)){ 
+  # Use tag-jump corrected metabarlist with the threshold identified above
+  tmp <- metab_lists[[i]][[chsn_thrshld[i]]]
+  
+  # Subset on MOTUs: we keep motus that are defined as TRUE following the 
+  # criteria below (sum of x TRUE is equal to x with the rowSums function)
+  tmp <- subset_metabarlist(tmp, "motus", 
+                            indices = rowSums(tmp$motus[,c("good_assign", "target_taxon")]) == 2)# ?poorly assigned?
+  
+  # Subset on pcrs and keep only samples 
+  cleaned_metablist[[folder_names[i]]] <- data_temp <- subset_metabarlist(tmp, "pcrs", 
+                                                                          indices = tmp$pcrs[,c("seqdepth_ok")] == TRUE & #, "replicating_pcr" 
+                                                                              tmp$pcrs$type == "sample")
+  summary_list[[folder_names[i]]] <- summary_metabarlist(data_temp)
+  
+  if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty motus present"))}
+  if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty pcrs present"))}
+  
+  #update counts and reads.    
+  data_temp$motus$counts = colSums(data_temp$reads)
+  data_temp$pcrs$reads_post = rowSums(data_temp$reads)
+  data_temp$pcrs$motus_post = rowSums(ifelse(data_temp$reads>0, T, F))
+  
+  check <- melt(data_temp$pcrs[,c("nb_reads", "reads_post", 
+                                       "nb_motus", "motus_post")])
+  check$type <- ifelse(grepl("motus", check$variable), "richness", "abundance")
+  
+  sumpipeline_plots[[folder_names[i]]] <- ggplot(data = check, aes(x = variable, y = value)) +
+    geom_boxplot( color = "darkgrey") +
+    geom_jitter(alpha=0.1, color = "darkgrey") +
+    theme_bw() +
+    facet_wrap(~type, scales = "free", ncol = 5) +
+    theme(axis.text.x = element_text(angle=45, h=1),
+          axis.title = element_blank()) +
+    ggtitle(paste0(folder_names[i],"_",chsn_thrshld[i]))
+
+  cleaned_metablist[[folder_names[i]]] <- data_temp
+}
+```
+
+
+```{r}
+motu_read_plots_post <- NULL 
+for (i in 1:length(folder_names)){
+  # Using the nb_reads and nb_motus defined previously in the data_temp$pcrs table
+  data_temp <- cleaned_metablist[[i]]
+  motu_read_plots_post[[folder_names[i]]] <- ggplot(data_temp$pcrs, aes(x=nb_reads, y=nb_motus, color = control_type)) + 
+    geom_point() + theme_bw() + 
+    scale_y_log10() + scale_x_log10() + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey")+
+    ggtitle(folder_names[[i]])
+}
+```
+
+
+```{r}
+physeqlists <- NULL
+raw_physeqlists <- NULL
+for (i in 1:length(folder_names)){
+data_temp_cleaned <- cleaned_metablist[[i]] 
+data_temp <- metab_lists[[folder_names[i]]][["raw"]]
+# Get row data only for samples
+tmp <- subset_metabarlist(data_temp, table = "pcrs",
+                          indices = data_temp$pcrs$type == "sample")
+
+tmpcl <- subset_metabarlist(data_temp_cleaned, table = "pcrs",
+                            indices = data_temp_cleaned$pcrs$type == "sample")
+
+# Format for phyloseq
+
+otumat <- as.matrix(tmp$reads)
+taxmat <- as.matrix(tmp$motus)
+sammat <- left_join(tmp$samples,tmp$pcrs)
+OTU <- otu_table(otumat, taxa_are_rows = F)
+TAX <- tax_table(taxmat)
+SAM <- sample_data(sammat)
+rownames(SAM) <- SAM$sample_id
+physeq <- phyloseq(OTU,TAX,SAM)
+raw_physeqlists[[folder_names[i]]] <-  physeq
+
+otumatcl <- as.matrix(tmpcl$reads)
+taxmatcl <- as.matrix(tmpcl$motus)
+sammatcl <- left_join(tmpcl$samples,tmpcl$pcrs)
+OTUcl <- otu_table(otumatcl, taxa_are_rows = F)
+TAXcl <- tax_table(taxmatcl)
+SAMcl <- sample_data(sammatcl)
+rownames(SAMcl) <- SAMcl$sample_id
+physeqcl <- phyloseq(OTUcl,TAXcl,SAMcl)
+
+physeqlists[[folder_names[i]]] <-  physeqcl
+}
+```
+
+```{r}
+beta_div <- NULL
+for (i in 1:length(physeqlists)){ 
+  # Build PCoA ordinations 
+  mds1 <- plot_ordination(raw_physeqlists[[i]],ordinate(raw_physeqlists[[i]],
+                                          method = "NMDS",
+                                          distance = "bray"),
+                          type = "taxa",
+                          color = "Phylum_conf_rdp")
+  mds2 <- plot_ordination(physeqlists[[i]],ordinate(physeqlists[[i]],
+                                   method = "NMDS",
+                                   distance = "bray"),
+                          type = "taxa",
+                          color = "Phylum_conf_rdp")
+  
+  # Custom colors
+  a <- mds1 + labs(color = "Phylum") +
+    theme(legend.position = "none") + 
+    ggtitle(paste0("Raw data",names(physeqlists)[[i]]))
+  b <- mds2 + labs(color = "Phylum") +
+    ggtitle(paste0("Clean data",names(physeqlists)[[i]]))
+  
+  # Assemble plots
+  leg <- get_legend(b + guides(shape=F) + 
+                      theme(legend.position = "right", 
+                            legend.direction = "vertical"))
+  beta_div[[names(physeqlists)[i]]] <-  local({ggdraw() +
+    draw_plot(a, x=0, y=0, width = 0.4, height = 1) + 
+    draw_plot(b + guides(color=F, shape=F), x=0.42, y=0, width = 0.4, height = 1) +
+    draw_grob(leg, x=0.4, y=0)})
+  
+}
+```
+
+
+
+
+```{r}
+beta_div2 <- NULL
+for (i in 1:length(physeqlists)){ 
+  # Build PCoA ordinations 
+  mds1 <- plot_ordination(raw_physeqlists[[i]],ordinate(raw_physeqlists[[i]],
+                                          method = "NMDS",
+                                          distance = "bray"),
+                          type = "samples",
+                          color = "organ")
+  mds2 <- plot_ordination(physeqlists[[i]],ordinate(physeqlists[[i]],
+                                   method = "NMDS",
+                                   distance = "bray"),
+                          type = "samples",
+                          color = "organ")
+  
+  # Custom colors
+  a <- mds1 + labs(color = "organ") +
+    theme(legend.position = "none") + 
+    ggtitle(paste0("Raw data",names(physeqlists)[[i]]))
+  b <- mds2 + labs(color = "organ") +
+    ggtitle(paste0("Clean data",names(physeqlists)[[i]]))
+  
+  # Assemble plots
+  leg <- get_legend(b + guides(shape=F) + 
+                      theme(legend.position = "right", 
+                            legend.direction = "vertical"))
+  beta_div2[[names(physeqlists)[i]]] <-  local({ggdraw() +
+    draw_plot(a, x=0, y=0, width = 0.4, height = 1) + 
+    draw_plot(b + guides(color=F, shape=F), x=0.42, y=0, width = 0.4, height = 1) +
+    draw_grob(leg, x=0.4, y=0)})
+  
+}
+```
+

@@ -1,0 +1,63 @@
+# NGS filter files creation
+
+Alrdy demultiplexed, no need fur ngs filters
+
+## Primers
+
+* 16s/C (412 pb):
+    + PCR1-515F 5' CTTTCCCTACACGACGCTCTTCCGATCT GTGYCAGCMGCCGCGGT 3' (tag + primer) [tag is illumina adaptor?]
+    + PCR1-909R 5' GGAGTTCAGACGTGTGCTCTTCCGATCT CCCCGYCAATTCMTTTRAGT 3' (tag + primer)
+                                                
+* 23s/A (410pb):
+    + P23SrV_f1 5' CTTTCCCTACACGACGCTCTTCCGATCT GGACAGAAAGACCCTATGAA 3' (tag + primer)
+    + P23SrV_r1 5' GGAGTTCAGACGTGTGCTCTTCCGATCT CAGCCTGTTATCCCTAGAG 3' (tag + primer)
+    
+* 18s/B (415pb / 200/-600) Tanabe et al. 2016 (stoeck et al. 2010):
+    + TAReuk454FWD1: 5' CCAGCASCYGCGGTAATTCC 3' (primer)
+    + TAReukREV3: 5' ACTTTCGTTCTTGATYRA 3' (primer)
+    
+degenerate nucleotides code:
+
+--------------------
+A |	Adenine |	A
+C |	Cytosine |	C
+G |	Guanine |	G
+T |	Thymine (DNA) |	T
+U |	Uracil (RNA) |	U
+W |	Weak |	A/T
+S |	Strong |	C/G
+M |	Amino |	A/C
+K |	Keto |	G/T
+R |	Purine |	A/G
+Y |	Pyrimidine |	C/T
+B |	Not A |	C/G/T
+D |	Not C |	A/G/T
+H |	Not G |	A/C/T
+V |	Not T |	A/C/G
+N |	Any |	A/C/G/T
+
+```{r}
+nb_of_samples23s <- length(list.files("../data/sequencing/MAPP_23S/"))/2
+nb_of_samples18s <- length(list.files("../data/sequencing/MAPP_18S/"))/2
+nb_of_samples16s <- length(list.files("../data/sequencing/MAPP_16S/"))/2
+```
+
+
+```{r}
+ngs_16s <- data.frame(sample_id=unique(gsub("VJ-","",(gsub("_.*gz","",list.files("../data/sequencing/MAPP_16S/"))))),
+                      tags=unique(stringr::str_extract(list.files("../data/sequencing/MAPP_16S/"),"(?<=_)[A-Z]+(?=-)")),
+                      seq_prime_f="GTGYCAGCMGCCGCGGT",
+                      seq_prime_r="CCCCGYCAATTCMTTTRAGT")
+
+
+unique(gsub("VJ-","",(gsub("_.*gz","",list.files("../data/sequencing/MAPP_16S/")))))
+unique(stringr::str_extract(list.files("../data/sequencing/MAPP_16S/"),"(?<=_)[A-Z]+(?=-)"))
+
+duplicated((stringr::str_extract(list.files("../data/sequencing/MAPP_16S/"),"(?<=_)[A-Z]+(?=-)")))
+stringr::str_extract(list.files("../data/sequencing/MAPP_16S/"),"(?<=_)[A-Z]+(?=-)")
+```
+
+
+## Frogs news
+
+https://frogs.toulouse.inra.fr/news/FROGSNews-June2023.html#FROGS-v410-is-available
