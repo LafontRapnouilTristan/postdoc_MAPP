@@ -28,15 +28,18 @@ world_map <- map_data("world")
 p <- ggplot() + coord_fixed() +
     xlab("") + ylab("")
 
-
+ggsave("ressource/Site_edaphic_data/sample_map.png",
 p + geom_polygon(data=world_map, aes(x=long, y=lat, group=group), 
                  colour="#9e7221", fill="#c9a563")+
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), 
           panel.background = element_rect(fill = 'lightgrey', colour = 'white'), 
           axis.line = element_line(colour = "white"), legend.position="none",
           axis.ticks=element_blank(), axis.text.x=element_blank(),
-          axis.text.y=element_blank())+
+          axis.text.y=element_blank(),
+          plot.background = element_blank())+
     geom_point(data=site_coord,
-               aes(x=Y,y=X),color="darkblue",fill="steelblue",pch=21,size=3,alpha=.7)+
-    # Convert to polar coordinates
-    coord_map("ortho", orientation = c(90, 0, 0))
+               aes(x=X,y=Y),color="darkblue",fill="steelblue",pch=21,size=1,alpha=.7),
+dpi=600,
+device="png"
+)
