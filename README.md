@@ -19,3 +19,5 @@ Site metada:
     * Sph water content
 
 
+Sample distribution:
+[/resource/Site_edaphic_data/sample_map.png]()
