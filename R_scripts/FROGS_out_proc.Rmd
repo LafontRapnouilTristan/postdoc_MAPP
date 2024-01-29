@@ -17,7 +17,7 @@ test <- readxl::read_xlsx("../ressource/Site_edaphic_data/DataSheet1_edaphic_dat
 ```{r}
 path_frogs_out <- "../ressource/bioinfo_pipeline_FROGS/FROGS_galaxy_outputs/"
 folder_names <- list.files(path_frogs_out)
-folder_names <- folder_names[2:3]
+folder_names <- folder_names[1:3]
 boots_thshld <- 0.7
 metab_lists<- NULL
 for(i in folder_names){
@@ -101,6 +101,7 @@ for(i in folder_names){
                                               pcrs = pcr_frame,
                                               samples = sample_frame
     )
+    rm(data_temp,motus_frame,pcr_frame,reads_frame,sample_frame)
 }
 ```
 
