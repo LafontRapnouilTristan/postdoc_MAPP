@@ -28,7 +28,7 @@ world_map <- map_data("world")
 p <- ggplot() + coord_fixed() +
     xlab("") + ylab("")
 
-ggsave("ressource/Site_edaphic_data/sample_map.png",
+ggsave("sample_map.png",
 p + geom_polygon(data=world_map, aes(x=long, y=lat, group=group), 
                  colour="#9e7221", fill="#c9a563")+
     theme(panel.grid.major = element_blank(),
