@@ -74,13 +74,13 @@ for(i in folder_names){
                                   sep=";",
                                   remove = F)%>%
             separate(blast_taxonomy,
-                     into=c("blast_Kingdom",
-                            "blast_Phylum",
-                            "blast_Class",
-                            "blast_Order",
-                            "blast_Family",
-                            "blast_Genus",
-                            "blast_Species"),
+                     into=c("Kingdom_blast",
+                            "Phylum_blast",
+                            "Class_blast",
+                            "Order_blast",
+                            "Family_blast",
+                            "Genus_blast",
+                            "Species_blast"),
                      sep=";",
                      remove = F)%>%
             mutate(across(.cols=which(grepl("boots_",colnames(.))),.fns=as.numeric))
@@ -95,12 +95,12 @@ for(i in folder_names){
     sample_frame <- data.frame(sample_id=colnames(data_temp)[grep("L001",colnames(data_temp))])
     rownames(sample_frame) <- sample_frame$sample_id
     
-    
     metab_lists[[i]] <- metabarlist_generator(reads = reads_frame,
                                               motus = motus_frame,
                                               pcrs = pcr_frame,
                                               samples = sample_frame
     )
+    
     rm(data_temp,motus_frame,pcr_frame,reads_frame,sample_frame)
 }
 ```
@@ -601,6 +601,14 @@ for (i in 1:length(folder_names)){
     rm(data_temp_cleaned,data_temp,tmp,tmpcl,otumat,taxmat,sammat,OTU,TAX,SAM,physeq,otumatcl,taxmatcl,sammatcl,OTUcl,TAXcl,SAMcl,physeqcl)
 }
 ```
+remove unwanted samples
+```{r}
+for (i in 1:length(folder_names)){
+    data_temp <- physeqlists[[folder_names[i]]]
+physeqlists[[folder_names[i]]] <- subset_samples(data_temp, !grepl("23[1-8]|420|241",data_temp@sam_data$sample_id))
+}
+
+```
 
 ### Transform to microeco
 
@@ -664,11 +672,71 @@ ggsave(filename = "../Figures/maps_richness_and_reads.png",mapprichreadsplot,hei
 ```
 
 
+### Hellinger transformation
+
+```{r}
+data_23s_hell <- clone(meco_23s) # hellinger transformation
+data_23s_hell$otu_table <- t(t(labdsv::hellinger(data_23s_hell$otu_table)))
+```
+
+
+### PCOA
+
+```{r}
+ordi23s <- ordinate(file2meco::meco2phyloseq(data_23s_hell), "PCoA", "horn")
+
+expl1 <- ordi16s$values$Relative_eig[1]
+expl2 <- ordi16s$values$Relative_eig[2]
+expl3 <- ordi16s$values$Relative_eig[3]
+df_ordi_16s <- data.frame(dim1=ordi16s$vectors[,1],
+                          dim2=ordi16s$vectors[,2],
+                          dim3=ordi16s$vectors[,3],
+                          trtmt=filtered_16s_hell$sample_table$Trtmt,
+                          drought=filtered_16s_hell$sample_table$drought,
+                          substrate=filtered_16s_hell$sample_table$substrate
+)
+
+
+pcoa16s_trtmt <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=trtmt))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  stat_ellipse(geom="polygon",
+               alpha=0.25,
+               aes(fill=trtmt))+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)
+
+
+pcoa16s_drought <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=drought))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  stat_ellipse(geom="polygon",
+               alpha=0.25,
+               aes(fill=drought))+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)
+
+pcoa16s_substrate <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=substrate))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  stat_ellipse(geom="polygon",
+               alpha=0.25,
+               aes(fill=substrate))+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)
+
+pcoa_comb16s <- (pcoa16s_trtmt|pcoa16s_drought)/(pcoa16s_substrate|plot_spacer())
+```
 
 
 
-
-
+### JUNK
 
 ```{r}
 tax_save <- as.data.frame(raw_physeqlists$MAPP_23s@tax_table)
