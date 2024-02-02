@@ -302,7 +302,7 @@ for (i in 1:length(folder_names)){
       print(non_target_prop[[i]])
   }else if(target=="18s"){ # 18s filter on order? 
       #Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
-      data_temp$motus$target_taxon <- !grepl("Embryophyceae|Annelida|Arthropoda|Tardigrada|Cnidaria|Gastrotricha", data_temp$motus$Order)
+      data_temp$motus$target_taxon <- !grepl("Embryophyceae|Annelida|Arthropoda|Tardigrada|Cnidaria|Gastrotricha|Basidiomycota|Chytridiomycota|Ascomycota|Fungi|Mucoromycota|Microsporidiomycota", data_temp$motus$Order)
       
       # Proportion of each of these over total number of MOTUs
       non_target_prop[[folder_names[i]]] <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
@@ -605,10 +605,17 @@ remove unwanted samples
 ```{r}
 for (i in 1:length(folder_names)){
     data_temp <- physeqlists[[folder_names[i]]]
-physeqlists[[folder_names[i]]] <- subset_samples(data_temp, !grepl("23[1-8]|420|241",data_temp@sam_data$sample_id))
+    data_temp@sam_data$reads_post <- rowSums(data_temp@otu_table)
+    
+    data_temp@sam_data$reads_post = rowSums(data_temp@otu_table) # reads per samples
+    data_temp@sam_data$motus_post = rowSums(ifelse(data_temp@otu_table>0, T, F)) # motus per samples
+    
+    
+    physeqlists[[folder_names[i]]] <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241",data_temp@sam_data$sample_id))
 }
 
 ```
+
 
 ### Transform to microeco
 
@@ -629,10 +636,11 @@ meco_23s$sample_table %<>% left_join(site_coordinates)
 
 meco_16s$sample_table$Y[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$Y[which(site_coordinates$Sample=="087")]
 meco_16s$sample_table$X[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$X[which(site_coordinates$Sample=="087")]
-```
 
-```{r}
-View(meco_16s$tax_table)
+
+rownames(meco_23s$sample_table) <- meco_23s$sample_table$sample_id
+rownames(meco_18s$sample_table) <- meco_18s$sample_table$sample_id
+rownames(meco_16s$sample_table) <- meco_16s$sample_table$sample_id
 ```
 
 ### Map seq depht and nb reads
@@ -648,27 +656,59 @@ mapp_rich_reads_plot <- NULL
 for(i in folder_names){
     
     data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
-    mapp_rich_reads_plot[[i]] <- p + geom_polygon(data=world_map, aes(x=long, y=lat, group=group), 
+    mapp_rich_reads_plot[[i]] <- p + geom_polygon(data=filter(world_map,lat>0), aes(x=long, y=lat, group=group), 
                                                   colour="#9e7221", fill="#c9a563")+
+        geom_hline(aes(yintercept = 0), linewidth = 1)+
         theme(panel.grid.major = element_blank(),
               panel.grid.minor = element_blank(), 
-              panel.background = element_rect(fill = 'lightgrey', colour = 'white'), 
+              panel.background = element_blank(), 
               axis.line = element_line(colour = "white"), legend.position="right",
               axis.ticks=element_blank(), axis.text.x=element_blank(),
               axis.text.y=element_blank(),
               plot.background = element_blank(),
               legend.background = element_blank(),
               legend.box = element_blank())+
-        geom_point(data=data_temp$sample_table,
-                   aes(x=X,y=Y,fill=motus_post,size=reads_post),color="black",pch=21,alpha=.7)+
+        geom_point(data=filter(data_temp$sample_table,Country!="Chile"),
+                   aes(x=X,y=Y,fill=motus_post,size=reads_post),color="black",pch=21,alpha=.5)+
+        scale_fill_viridis_b()+
+        labs(fill="Richness",size="Number of reads")+
+        ggtitle(i)+
+        theme(plot.title = element_text(face="bold"),legend.box = "horizontal",plot.margin = margin(0,0,0,0,"cm"))+
+        coord_map("ortho", orientation = c(90, 0, 0))
+}
+mapprichreadsplot <- 
+    mapp_rich_reads_plot$MAPP_16s/mapp_rich_reads_plot$MAPP_18s/mapp_rich_reads_plot$MAPP_23s
+ggsave(filename = "../Figures/maps_richness_and_reads_polar.png",mapprichreadsplot,height=15,width = 11)
+
+
+mapp_rich_reads_plot_europe <- NULL
+for(i in folder_names){
+    
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    mapp_rich_reads_plot_europe[[i]] <- p + geom_polygon(data=filter(world_map,between(lat,32,78)&between(long,-25,50)), aes(x=long, y=lat, group=group), 
+                                                  colour="#9e7221", fill="#c9a563")+
+        theme(panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(), 
+              panel.background = element_blank(), 
+              axis.line = element_line(colour = "white"), legend.position="right",
+              axis.ticks=element_blank(), axis.text.x=element_blank(),
+              axis.text.y=element_blank(),
+              plot.background = element_blank(),
+              legend.background = element_blank(),
+              legend.box = element_blank())+
+        geom_point(data=filter(data_temp$sample_table,between(Y,32,70)&between(X,-25,50)),
+                   aes(x=X,y=Y,fill=motus_post,size=reads_post),color="black",pch=21,alpha=.5)+
         scale_fill_viridis_b()+
         labs(fill="Richness",size="Number of reads")+
         ggtitle(i)+
         theme(plot.title = element_text(face="bold"),legend.box = "horizontal",plot.margin = margin(0,0,0,0,"cm"))
 }
-mapprichreadsplot <- 
-    mapp_rich_reads_plot$MAPP_16s/mapp_rich_reads_plot$MAPP_18s/mapp_rich_reads_plot$MAPP_23s
-ggsave(filename = "../Figures/maps_richness_and_reads.png",mapprichreadsplot,height=15,width = 11)
+
+mapprichreadsploteurope <- 
+    mapp_rich_reads_plot_europe$MAPP_16s/mapp_rich_reads_plot_europe$MAPP_18s/mapp_rich_reads_plot_europe$MAPP_23s
+
+ggsave(filename = "../Figures/maps_richness_and_reads_europe.png",mapprichreadsploteurope,height=15,width = 11)
+
 ```
 
 
@@ -677,6 +717,12 @@ ggsave(filename = "../Figures/maps_richness_and_reads.png",mapprichreadsplot,hei
 ```{r}
 data_23s_hell <- clone(meco_23s) # hellinger transformation
 data_23s_hell$otu_table <- t(t(labdsv::hellinger(data_23s_hell$otu_table)))
+
+data_16s_hell <- clone(meco_16s) # hellinger transformation
+data_16s_hell$otu_table <- t(t(labdsv::hellinger(data_16s_hell$otu_table)))
+
+data_18s_hell <- clone(meco_18s) # hellinger transformation
+data_18s_hell$otu_table <- t(t(labdsv::hellinger(data_18s_hell$otu_table)))
 ```
 
 
@@ -685,53 +731,72 @@ data_23s_hell$otu_table <- t(t(labdsv::hellinger(data_23s_hell$otu_table)))
 ```{r}
 ordi23s <- ordinate(file2meco::meco2phyloseq(data_23s_hell), "PCoA", "horn")
 
+expl1 <- ordi23s$values$Relative_eig[1]
+expl2 <- ordi23s$values$Relative_eig[2]
+expl3 <- ordi23s$values$Relative_eig[3]
+df_ordi_23s <- data.frame(dim1=ordi23s$vectors[,1],
+                          dim2=ordi23s$vectors[,2],
+                          dim3=ordi23s$vectors[,3],
+                          country=data_23s_hell$sample_table$Country
+                          )
+
+
+pcoa23s <- ggplot(df_ordi_23s,aes(x=dim1,y=dim2,color=country))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  geom_vline(xintercept=0)+
+  geom_hline(yintercept=0)+
+  ggtitle("MAPP_23s")+
+  theme(plot.title = element_text(face="bold"))
+
+ordi16s <- ordinate(file2meco::meco2phyloseq(data_16s_hell), "PCoA", "horn")
+
 expl1 <- ordi16s$values$Relative_eig[1]
 expl2 <- ordi16s$values$Relative_eig[2]
 expl3 <- ordi16s$values$Relative_eig[3]
 df_ordi_16s <- data.frame(dim1=ordi16s$vectors[,1],
                           dim2=ordi16s$vectors[,2],
                           dim3=ordi16s$vectors[,3],
-                          trtmt=filtered_16s_hell$sample_table$Trtmt,
-                          drought=filtered_16s_hell$sample_table$drought,
-                          substrate=filtered_16s_hell$sample_table$substrate
-)
+                          country=data_16s_hell$sample_table$Country
+                          )
 
 
-pcoa16s_trtmt <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=trtmt))+
+pcoa16s <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=country))+
   geom_point()+
   theme_classic()+
   ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
   xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  stat_ellipse(geom="polygon",
-               alpha=0.25,
-               aes(fill=trtmt))+
   geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)
+  geom_hline(yintercept=0)+
+  ggtitle("MAPP_16s")+
+  theme(plot.title = element_text(face="bold"))
 
 
-pcoa16s_drought <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=drought))+
+ordi18s <- ordinate(file2meco::meco2phyloseq(data_18s_hell), "PCoA", "horn")
+
+expl1 <- ordi18s$values$Relative_eig[1]
+expl2 <- ordi18s$values$Relative_eig[2]
+expl3 <- ordi18s$values$Relative_eig[3]
+df_ordi_18s <- data.frame(dim1=ordi18s$vectors[,1],
+                          dim2=ordi18s$vectors[,2],
+                          dim3=ordi18s$vectors[,3],
+                          country=data_18s_hell$sample_table$Country
+                          )
+
+
+pcoa18s <- ggplot(df_ordi_18s,aes(x=dim1,y=dim2,color=country))+
   geom_point()+
   theme_classic()+
   ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
   xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  stat_ellipse(geom="polygon",
-               alpha=0.25,
-               aes(fill=drought))+
   geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)
+  geom_hline(yintercept=0)+
+  ggtitle("MAPP_18s")+
+  theme(plot.title = element_text(face="bold"))
 
-pcoa16s_substrate <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=substrate))+
-  geom_point()+
-  theme_classic()+
-  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
-  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  stat_ellipse(geom="polygon",
-               alpha=0.25,
-               aes(fill=substrate))+
-  geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)
 
-pcoa_comb16s <- (pcoa16s_trtmt|pcoa16s_drought)/(pcoa16s_substrate|plot_spacer())
 ```
 
 
