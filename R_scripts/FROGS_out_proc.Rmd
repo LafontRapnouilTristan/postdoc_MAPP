@@ -292,7 +292,7 @@ for (i in 1:length(folder_names)){
   
   if(target=="16s"){ # Keep all bac and archaea?
       #Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
-      data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)
+      data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)&!grepl("Chloroplast",data_temp$motus$Order)
       
       # Proportion of each of these over total number of MOTUs
       non_target_prop[[folder_names[i]]] <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
@@ -633,9 +633,9 @@ meco_16s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,p
 meco_16s$sample_table %<>% left_join(site_coordinates)
 meco_23s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
 meco_23s$sample_table %<>% left_join(site_coordinates)
-
-meco_16s$sample_table$Y[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$Y[which(site_coordinates$Sample=="087")]
-meco_16s$sample_table$X[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$X[which(site_coordinates$Sample=="087")]
+# 
+# meco_16s$sample_table$Y[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$Y[which(site_coordinates$Sample=="087")]
+# meco_16s$sample_table$X[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$X[which(site_coordinates$Sample=="087")]
 
 
 rownames(meco_23s$sample_table) <- meco_23s$sample_table$sample_id
@@ -741,6 +741,60 @@ GGally::ggpairs(
     progress = F
 )
 ```
+
+
+### Plot richness
+
+```{r}
+plot<- data_temp %>%
+    melt()%>%
+    filter(grepl("motus",variable))%>%
+    ggplot()+
+    geom_boxplot(aes(x=variable,y=value,fill=variable))+
+    theme_classic2()+
+    scale_fill_manual(values=RColorBrewer::brewer.pal(3,"Dark2"))+
+    scale_y_log10()+
+    ggtitle("ASVs number")+
+    theme(plot.title = element_text(face="bold"))+
+    theme(legend.position = "n")+
+    data_temp %>%
+    melt()%>%
+    filter(grepl("reads",variable))%>%
+    ggplot()+
+    geom_boxplot(aes(x=variable,y=value,fill=variable))+
+    theme_classic2()+
+    scale_fill_manual(values=RColorBrewer::brewer.pal(3,"Dark2"))+
+    scale_y_log10()+
+    ggtitle("Reads number")+
+    theme(plot.title = element_text(face="bold"))+
+    plot_layout(guides = "collect")
+
+    ggsave(plot=plot,filename="../Figures/richness_reads_dataset.png",width=11)
+    ```
+
+### plot composition
+
+```{r}
+ab_trans_16s <- trans_abund$new(meco_16s,taxrank = "Species",ntaxa = 8)
+ab_trans_16s$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)
+# return a ggplot2 object
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ### Hellinger transformation
