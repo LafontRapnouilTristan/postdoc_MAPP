@@ -828,7 +828,7 @@ meco_23s$sample_table%<>%mutate(type="")
 ab_trans_23s_donut <- trans_abund$new(meco_23s,taxrank = "Order",ntaxa = 8,groupmean = "type")
 
 order_relab_23s_donut <- ab_trans_23s_donut$plot_donut(labels=NULL)+
-    ggtitle("MAPP 16s")+
+    ggtitle("MAPP 23s")+
     theme(plot.title = element_text(face='bold'))+
     theme(plot.tag = element_blank(),
           plot.subtitle = element_blank(),
