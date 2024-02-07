@@ -806,43 +806,32 @@ ggsave("../Figures/plot_relab.png",plot_relab,height = 9,width = 10)
 
 donuts plot?
 ```{r}
-meco_16s$sample_table%<>%mutate(type="")
-ab_trans_16s_donut <- trans_abund$new(meco_16s,taxrank = "Order",ntaxa = 8,groupmean = "type")
+plot_donuts_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    data_temp <- trans_abund$new(data_temp,taxrank = "Order",ntaxa = 8,groupmean = "type")
+    plot_data <- data_temp$data_abund
+    use_taxanames <- data_temp$data_taxanames
+    plot_data$Taxonomy[!plot_data$Taxonomy %in% use_taxanames] <- "Others"
+    plot_data %<>% dplyr::group_by(!!!syms(c("Taxonomy", 
+                                             "Sample"))) %>% dplyr::summarise(Abundance = sum(Abundance)) %>% 
+        as.data.frame(stringsAsFactors = FALSE)
+    plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames, 
+                                             "Others"))
+    plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
+    plot_donuts_list[[i]] <- ggdonutchart(plot_data,"Abundance",
+             fill="Taxonomy",
+             label = "label",
+             color = "white",
+             palette =  colorRampPalette(brewer.pal(8, "Dark2"))(9))+
+    theme(legend.position = "right")+
+    ggtitle(i)+
+    theme(plot.title=element_text(face='bold'))
+}
 
-order_relab_16s_donut <- ab_trans_16s_donut$plot_donut(labels=NULL)+
-    ggtitle("MAPP 16s")+
-    theme(plot.title = element_text(face='bold'))+
-    theme(plot.tag = element_blank())
-
-
-meco_18s$sample_table%<>%mutate(type="")
-ab_trans_18s_donut <- trans_abund$new(meco_18s,taxrank = "Order",ntaxa = 8,groupmean = "type")
-
-order_relab_18s_donut <- ab_trans_18s_donut$plot_donut(labels=NULL)+
-    ggtitle("MAPP 18s")+
-    theme(plot.title = element_text(face='bold'))+
-    theme(plot.tag = element_blank())
-
-
-meco_23s$sample_table%<>%mutate(type="")
-ab_trans_23s_donut <- trans_abund$new(meco_23s,taxrank = "Order",ntaxa = 8,groupmean = "type")
-
-order_relab_23s_donut <- ab_trans_23s_donut$plot_donut(labels=NULL)+
-    ggtitle("MAPP 23s")+
-    theme(plot.title = element_text(face='bold'))+
-    theme(plot.tag = element_blank(),
-          plot.subtitle = element_blank(),
-          strip.text = element_blank(),
-          axis.text = element_blank(),
-          plot.caption = element_blank())
-
-
-plot_donuts <- order_relab_16s_donut/order_relab_18s_donut/order_relab_23s_donut
+plot_donuts <- plot_donuts_list[[1]]/plot_donuts_list[[2]]/plot_donuts_list[[3]]
 ggsave("../Figures/plot_donuts.png",plot_donuts,height = 12,width = 10)
 ```
-
-
-
 
 
 
