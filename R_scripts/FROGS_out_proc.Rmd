@@ -641,6 +641,10 @@ meco_23s$sample_table %<>% left_join(site_coordinates)
 rownames(meco_23s$sample_table) <- meco_23s$sample_table$sample_id
 rownames(meco_18s$sample_table) <- meco_18s$sample_table$sample_id
 rownames(meco_16s$sample_table) <- meco_16s$sample_table$sample_id
+
+meco_16s$tidy_dataset()
+meco_18s$tidy_dataset()
+meco_23s$tidy_dataset()
 ```
 
 ### Map seq depht and nb reads
@@ -774,13 +778,68 @@ plot<- data_temp %>%
 
 ### plot composition
 
+
+barplots
 ```{r}
-ab_trans_16s <- trans_abund$new(meco_16s,taxrank = "Species",ntaxa = 8)
-ab_trans_16s$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)
-# return a ggplot2 object
+ab_trans_16s <- trans_abund$new(meco_16s,taxrank = "Order",ntaxa = 8)
+order_relab_16s <- ab_trans_16s$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)+
+    ggtitle("MAPP 16s")+
+    theme(plot.title = element_text(face='bold'))
+
+ab_trans_18s <- trans_abund$new(meco_18s,taxrank = "Order",ntaxa = 8)
+order_relab_18s <- ab_trans_18s$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)+
+    ggtitle("MAPP 18s")+
+    theme(plot.title = element_text(face='bold'))
+
+
+ab_trans_23s <- trans_abund$new(meco_23s,taxrank = "Order",ntaxa = 8)
+order_relab_23s <- ab_trans_23s$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)+
+    ggtitle("MAPP 23s")+
+    theme(plot.title = element_text(face='bold'))
+
+plot_relab <- order_relab_16s/order_relab_18s/order_relab_23s
+ggsave("../Figures/plot_relab.png",plot_relab,height = 9,width = 10)
 ```
 
+donuts plot?
+```{r}
+meco_16s$sample_table%<>%mutate(type="")
+ab_trans_16s_donut <- trans_abund$new(meco_16s,taxrank = "Order",ntaxa = 8,groupmean = "type")
 
+order_relab_16s_donut <- ab_trans_16s_donut$plot_donut(labels=NULL)+
+    ggtitle("MAPP 16s")+
+    theme(plot.title = element_text(face='bold'))+
+    theme(plot.tag = element_blank())
+
+
+meco_18s$sample_table%<>%mutate(type="")
+ab_trans_18s_donut <- trans_abund$new(meco_18s,taxrank = "Order",ntaxa = 8,groupmean = "type")
+
+order_relab_18s_donut <- ab_trans_18s_donut$plot_donut(labels=NULL)+
+    ggtitle("MAPP 18s")+
+    theme(plot.title = element_text(face='bold'))+
+    theme(plot.tag = element_blank())
+
+
+meco_23s$sample_table%<>%mutate(type="")
+ab_trans_23s_donut <- trans_abund$new(meco_23s,taxrank = "Order",ntaxa = 8,groupmean = "type")
+
+order_relab_23s_donut <- ab_trans_23s_donut$plot_donut(labels=NULL)+
+    ggtitle("MAPP 16s")+
+    theme(plot.title = element_text(face='bold'))+
+    theme(plot.tag = element_blank(),
+          plot.subtitle = element_blank(),
+          strip.text = element_blank(),
+          axis.text = element_blank(),
+          plot.caption = element_blank())
+
+
+plot_donuts <- order_relab_16s_donut/order_relab_18s_donut/order_relab_23s_donut
+ggsave("../Figures/plot_donuts.png",plot_donuts,height = 12,width = 10)
+```
 
 
 
