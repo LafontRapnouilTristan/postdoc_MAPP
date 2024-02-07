@@ -645,7 +645,29 @@ rownames(meco_16s$sample_table) <- meco_16s$sample_table$sample_id
 meco_16s$tidy_dataset()
 meco_18s$tidy_dataset()
 meco_23s$tidy_dataset()
+
+gc()
 ```
+
+
+
+## Clean and save ENV
+
+```{r}
+param_list <- list(boots_thshld=boots_thshld,
+                   chsn_thrshld=chsn_thrshld,
+                   path_frogs_out=path_frogs_out,
+                   thresholds=thresholds)
+
+save(param_list, file = "../output/clean_frogs_param.Rdata")
+save(metab_lists,cleaned_metablist,file = "../output/metabarlists.Rdata")
+save(physeqlists,raw_physeqlists,file = "../output/physeqlists.Rdata")
+save(meco_16s,meco_18s,meco_23s, file = "../output/microeco_obj.Rdata")
+
+to_keep <- c("metab_lists","cleaned_metablist","physeqlists","raw_physeqlists","meco_16s","meco_18s","meco_23s")
+rm(list=setdiff(ls(), to_keep))
+```
+
 
 ### Map seq depht and nb reads
 
