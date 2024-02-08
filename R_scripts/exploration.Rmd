@@ -1,5 +1,11 @@
 ```{r}
 EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer"))
+
+load("../output/microeco_obj.Rdata")
+
+path_frogs_out <- "../ressource/bioinfo_pipeline_FROGS/FROGS_galaxy_outputs/"
+folder_names <- list.files(path_frogs_out)
+folder_names <- folder_names[1:3]
 ```
 
 
