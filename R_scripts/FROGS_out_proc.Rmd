@@ -11,6 +11,11 @@ EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplo
 Load site metadata
 ```{r}
 site_coordinates <- read.csv("../ressource/Site_edaphic_data/site_coord_MAPP.csv") 
+site_coordinates %<>% 
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
+site_coordinates %<>% 
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample))
 ```
 
 
@@ -628,14 +633,35 @@ meco_16s <- phyloseq2meco(physeqlists$MAPP_16s)
 ```{r}
 meco_18s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
 meco_18s$sample_table %<>% mutate(Sample = ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
-meco_18s$sample_table %<>% left_join(site_coordinates)
 meco_16s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
-meco_16s$sample_table %<>% left_join(site_coordinates)
+
 meco_23s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+meco_23s$sample_table$Sample[which(meco_23s$sample_table$Sample=="205")] <- "203"
+
+
+setdiff(meco_16s$sample_table$Sample,meco_18s$sample_table$Sample)
+setdiff(meco_16s$sample_table$Sample,meco_23s$sample_table$Sample)
+setdiff(meco_18s$sample_table$Sample,meco_23s$sample_table$Sample)
+
+
+
+
+setdiff(site_coordinates$Sample,meco_16s$sample_table$Sample) # we willingly removed 231-7|239|240|241 / 042 and 047 are mixed up what about : 115/124/199/200/201/205/206/208/209/227/252/253/258
+setdiff(site_coordinates$Sample,meco_18s$sample_table$Sample) # we willingly removed 231-7|239|240|241 / what about : 115/199/200/201/205/206/207/208/209/227/252/253/254/258
+
+setdiff(site_coordinates$Sample,meco_23s$sample_table$Sample) # we willingly removed 231-7|239|240|241 / what about : 115/199/200/201/205/206/207/208/209/227/252/253/254/258
+
+setdiff(meco_16s$sample_table$Sample,site_coordinates$Sample) # we willingly removed 231-7|239|240|241 / 042 and 047 are mixed up what about : 115/124/199/200/201/205/206/208/209/227/252/253/258
+setdiff(meco_18s$sample_table$Sample,site_coordinates$Sample) # we willingly removed 231-7|239|240|241 / what about : 115/199/200/201/205/206/207/208/209/227/252/253/254/258
+
+setdiff(meco_23s$sample_table$Sample,site_coordinates$Sample) 
+
+
+
+
+meco_18s$sample_table %<>% left_join(site_coordinates)
+meco_16s$sample_table %<>% left_join(site_coordinates)
 meco_23s$sample_table %<>% left_join(site_coordinates)
-# 
-# meco_16s$sample_table$Y[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$Y[which(site_coordinates$Sample=="087")]
-# meco_16s$sample_table$X[which(grepl("87",meco_16s$sample_table$sample_id))] <- site_coordinates$X[which(site_coordinates$Sample=="087")]
 
 
 rownames(meco_23s$sample_table) <- meco_23s$sample_table$sample_id
