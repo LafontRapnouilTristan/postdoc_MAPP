@@ -1,7 +1,7 @@
 # FROGS output processing
 
 ```{r}
-EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer"))
+EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer","vegan"))
 ```
 
 
@@ -633,7 +633,11 @@ meco_16s <- phyloseq2meco(physeqlists$MAPP_16s)
 ```{r}
 meco_18s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
 meco_18s$sample_table %<>% mutate(Sample = ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
+
+
 meco_16s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+meco_16s$sample_table$Sample[which(meco_16s$sample_table$Sample=="042047")] <- "203"
+
 
 meco_23s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
 meco_23s$sample_table$Sample[which(meco_23s$sample_table$Sample=="205")] <- "203"
@@ -675,6 +679,103 @@ meco_23s$tidy_dataset()
 gc()
 ```
 
+### Rarefaction Curves
+```{r}
+tab16s <- t(otu_table(file2meco::meco2phyloseq(meco_16s)))
+class(tab16s) <- "matrix"
+curve16s <- rarecurve(tab16s)
+names(curve16s) <- rownames(tab16s)
+
+# Coerce data into "long" form.
+protox <- mapply(FUN = function(x, y) {
+  mydf <- as.data.frame(x)
+  colnames(mydf) <- "value"
+  mydf$samples <- y
+  mydf$subsample <- attr(x, "Subsample")
+  mydf
+}, x = curve16s, y = as.list(names(curve16s)), SIMPLIFY = FALSE)
+
+xy <- do.call(rbind, protox)
+rownames(xy) <- NULL  # pretty
+
+# Plot.
+rare16s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+  theme_bw() +
+  scale_color_discrete(guide = "none") +  # turn legend on or off
+  geom_line(color = "aquamarine4")+
+  xlab("nb reads")+
+  ylab("OTUs count")
+
+
+
+tab18s <- t(otu_table(file2meco::meco2phyloseq(meco_18s)))
+class(tab18s) <- "matrix"
+curve18s <- rarecurve(tab18s)
+names(curve18s) <- rownames(tab18s)
+
+# Coerce data into "long" form.
+protox <- mapply(FUN = function(x, y) {
+  mydf <- as.data.frame(x)
+  colnames(mydf) <- "value"
+  mydf$samples <- y
+  mydf$subsample <- attr(x, "Subsample")
+  mydf
+}, x = curve18s, y = as.list(names(curve18s)), SIMPLIFY = FALSE)
+
+xy <- do.call(rbind, protox)
+rownames(xy) <- NULL  # pretty
+
+# Plot.
+rare18s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+  theme_bw() +
+  scale_color_discrete(guide = "none") +  # turn legend on or off
+  geom_line(color = "darkorange")+
+  xlab("nb reads")+
+  ylab("OTUs count")
+
+
+
+tab23s <- t(otu_table(file2meco::meco2phyloseq(meco_23s)))
+class(tab23s) <- "matrix"
+curve23s <- rarecurve(tab23s)
+names(curve23s) <- rownames(tab23s)
+
+# Coerce data into "long" form.
+protox <- mapply(FUN = function(x, y) {
+  mydf <- as.data.frame(x)
+  colnames(mydf) <- "value"
+  mydf$samples <- y
+  mydf$subsample <- attr(x, "Subsample")
+  mydf
+}, x = curve23s, y = as.list(names(curve23s)), SIMPLIFY = FALSE)
+
+xy <- do.call(rbind, protox)
+rownames(xy) <- NULL  # pretty
+
+# Plot.
+rare23s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+  theme_bw() +
+  scale_color_discrete(guide = "none") +  # turn legend on or off
+  geom_line(color = "darkorchid4")+
+  xlab("nb reads")+
+  ylab("OTUs count")
+
+
+rare16s <- rare16s+
+    ggtitle("MAPP_16s")+
+    theme(plot.title = element_text(face='bold'))
+
+rare18s <- rare18s+
+    ggtitle("MAPP_18s")+
+    theme(plot.title = element_text(face='bold'))
+
+rare23s <- rare23s+
+    ggtitle("MAPP_23s")+
+    theme(plot.title = element_text(face='bold'))
+ggsave("../Figures/rarefaction_curves.png",rare16s/rare18s/rare23s)
+```
+
+
 
 
 ## Clean and save ENV
@@ -685,6 +786,7 @@ param_list <- list(boots_thshld=boots_thshld,
                    path_frogs_out=path_frogs_out,
                    thresholds=thresholds)
 
+save(curve16s,curve18s,curve23s, file = "../output/rare_cuves.Rdata")
 save(param_list, file = "../output/clean_frogs_param.Rdata")
 save(metab_lists,cleaned_metablist,file = "../output/metabarlists.Rdata")
 save(physeqlists,raw_physeqlists,file = "../output/physeqlists.Rdata")
