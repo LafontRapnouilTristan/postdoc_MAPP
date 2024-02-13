@@ -1,0 +1,37 @@
+```{r}
+EcophyCofog::Library(c("EcophyCofog","readr","dplyr","magrittr","ggplot2","patchwork","ggpubr","tidyr"))
+```
+
+
+# load data
+
+```{r}
+data_sat <- read.csv("../ressource/Site_edaphic_data/MappPtsSampled.csv") #site bioclim
+load("../output/microeco_obj.Rdata") # metabar datasets
+```
+
+
+```{r}
+data_sat %<>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample))%>% # fix 87a and 87b sample ids
+    arrange(Sample)# fix sample ID to match the format of other MAPP datasets
+```
+
+
+
+
+
+
+```{r}
+var_cor <- GGally::ggpairs(
+    data_sat %>% 
+        select(c("X","Y","aet_lt","bulk","def_lt","evi_lt","gHM","gpp_lt","height",'lai_lt',"moist_lt","npp_lt","pdsi_lt","pet_lt","ph","pr_lt","ssm_lt","susm_lt","swe_lt","tmmn_lt","tmmx_lt","vap_lt","vpd_lt"))%>%
+        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),
+    progress = T,
+    cardinality_threshold = 105)
+ggsave("Figures/cov_cor.png",var_cor,height = 15,width = 15)
+```
+
+
