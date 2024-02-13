@@ -2,6 +2,9 @@
 
 ```{r}
 EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer","vegan"))
+
+data_set_colors <- c("aquamarine","darkorange","darkorchid4")
+names(data_set_colors) <- folder_names
 ```
 
 
@@ -775,7 +778,89 @@ rare23s <- rare23s+
 ggsave("../Figures/rarefaction_curves.png",rare16s/rare18s/rare23s)
 ```
 
+## Investigate singletons
 
+Visualize number of singletons
+```{r}
+single_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    
+    n_single_otu <- sum(rowSums(data_temp$otu_table)==1)
+    n_non_single_otu <- sum(rowSums(data_temp$otu_table)!=1)
+    n_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)==1),])
+    n_non_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)!=1),])
+    df_tmp <- data.frame(data_set=gsub("MAPP_","",i),otu_val=c(n_single_otu,n_non_single_otu),read_val=c(n_single_reads,n_non_single_reads),type=c("n_single","n_non_single"))
+    df_tmp %<>% mutate(pct_otus=otu_val/sum(otu_val),
+                       pct_reads=read_val/sum(data_temp$otu_table))
+    single_list <- rbind(single_list,df_tmp)
+}
+
+plot_singletons_reads <- ggplot(single_list,aes(x = data_set,y = pct_reads, fill=type))+
+           geom_bar(position="stack",stat = "identity")+
+    theme_classic2()+
+    scale_fill_manual(values = c("lightblue","lightgreen"))+
+    ggtitle("Pct of singletons reads")+
+    theme(plot.title = element_text(face='bold'))
+
+plot_singletons_otus <-  ggplot(single_list,aes(x = data_set,y = pct_otus, fill=type))+
+           geom_bar(position="stack",stat = "identity")+
+    theme_classic2()+
+    scale_fill_manual(values = c("lightseagreen","mediumvioletred"))+
+    ggtitle("Pct of singletons otus")+
+    theme(plot.title = element_text(face='bold'))
+
+plot_singletons <- plot_singletons_reads/plot_singletons_otus
+
+ggsave("../Figures/singletons.png",plot_singletons)
+```
+
+We have only singletons in 16s but ~80% of our OTUs
+```{r}
+df_plot_motu <- data.frame(reads = rowSums(meco_16s$otu_table),
+                           motus = rownames(meco_16s$otu_table))
+moturead <- ggplot(df_plot_motu,aes(x=log(reads+1),y=reorder(motus,reads)))+
+  geom_bar(stat = "identity",
+           position = "dodge",
+           width = 1,
+           fill='black')+
+  scale_x_continuous(oob = scales::rescale_none)+
+  theme(axis.text.y = element_blank())
+
+ggsave("../Figures/motureads_16s.png",moturead,device = "png")
+
+
+
+
+
+filtered_16s$otu_table <- filtered_16s$otu_table[which(rowSums(filtered_16s$otu_table)!=1),]
+filtered_16s$tidy_dataset()
+
+filtered_its$otu_table <- filtered_its$otu_table[which(rowSums(filtered_its$otu_table)!=1),]
+filtered_its$tidy_dataset()
+```
+
+## Investigate depths
+
+```{r}
+depth_plot_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    
+    seq_depths <- colSums(data_temp$otu_table)
+    df_tmp <- data.frame(data_set=gsub("MAPP_","",i),seq_depths=seq_depths)
+    depth_plot_list[[i]] <-{ggplot(df_tmp,aes(seq_depths))+
+        geom_histogram(bins = 40,fill = data_set_colors[i])+
+        theme_classic2()+
+        ggtitle(i)+
+        theme(plot.title = element_text(face='bold'))+
+        scale_x_log10()+
+        geom_vline(xintercept = 1e3, lty=2, color="black")} 
+}
+
+plot_depths <- depth_plot_list$MAPP_16s/depth_plot_list$MAPP_18s/depth_plot_list$MAPP_23s
+plot_depths
+```
 
 
 ## Clean and save ENV
