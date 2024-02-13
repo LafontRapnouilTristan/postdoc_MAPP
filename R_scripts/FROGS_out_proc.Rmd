@@ -815,30 +815,61 @@ plot_singletons <- plot_singletons_reads/plot_singletons_otus
 ggsave("../Figures/singletons.png",plot_singletons)
 ```
 
-We have only singletons in 16s but ~80% of our OTUs
+We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads
+
 ```{r}
-df_plot_motu <- data.frame(reads = rowSums(meco_16s$otu_table),
-                           motus = rownames(meco_16s$otu_table))
-moturead <- ggplot(df_plot_motu,aes(x=log(reads+1),y=reorder(motus,reads)))+
-  geom_bar(stat = "identity",
-           position = "dodge",
-           width = 1,
-           fill='black')+
-  scale_x_continuous(oob = scales::rescale_none)+
-  theme(axis.text.y = element_blank())
-
-ggsave("../Figures/motureads_16s.png",moturead,device = "png")
-
-
-
-
-
 filtered_16s$otu_table <- filtered_16s$otu_table[which(rowSums(filtered_16s$otu_table)!=1),]
 filtered_16s$tidy_dataset()
 
 filtered_its$otu_table <- filtered_its$otu_table[which(rowSums(filtered_its$otu_table)!=1),]
 filtered_its$tidy_dataset()
 ```
+
+
+sample alpha div
+```{r}
+alpha_plot_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    
+    alpha <- colSums(data_temp$otu_table!=0)
+    single_otu <-  colSums(data_temp$otu_table==1)
+    # non_single_otu2 <- colSums(data_temp$otu_table>1)
+    non_single_otu <- alpha-single_otu
+    df_tmp <- data.frame(data_set=gsub("MAPP_","",i),value = 
+c(rbind(single_otu,non_single_otu)),type=c("single_otu","non_single_otu"),sample=rep(1:ncol(data_temp$otu_table),each=2))
+    alpha_plot_list[[i]] <-{ggplot(df_tmp,aes(x=sample,y=value,fill=type))+
+            geom_bar(stat="identity",position = "stack")+
+            theme_classic2()+
+            ggtitle(i)+
+            theme(plot.title = element_text(face='bold'))+
+            xlab("samples_row")+
+            scale_fill_manual(values=c("lightseagreen","mediumvioletred"))} 
+}
+
+plot_alpha <- alpha_plot_list$MAPP_16s/alpha_plot_list$MAPP_18s/alpha_plot_list$MAPP_23s
+ggsave(plot_alpha,filename="../Figures/plot_alpha_ratio.png")
+
+
+
+alpha_plot_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    
+    alpha <- colSums(data_temp$otu_table!=0)
+    df_tmp <- data.frame(data_set=gsub("MAPP_","",i),alpha=alpha)
+    alpha_plot_list[[i]] <-{ggplot(df_tmp,aes(x=1:nrow(df_tmp),y=alpha))+
+            geom_bar(stat="identity",fill=data_set_colors[i])+
+            theme_classic2()+
+            ggtitle(i)+
+            theme(plot.title = element_text(face='bold'))+
+            xlab("samples_row")} 
+}
+
+plot_alpha <- alpha_plot_list$MAPP_16s/alpha_plot_list$MAPP_18s/alpha_plot_list$MAPP_23s
+ggsave(plot_alpha,filename="../Figures/plot_alpha.png")
+```
+
 
 ## Investigate depths
 
