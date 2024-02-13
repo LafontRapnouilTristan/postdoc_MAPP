@@ -818,7 +818,14 @@ ggsave("../Figures/singletons.png",plot_singletons)
 We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads.
 Can this be interpretated as high endemism in peatlands bacteria??
 And loads of rare strains? 
-We are working at OTUs
+We are working at low resolution with SWARM clustering, increasing singletons.
+We use the 'fastidious' option that should prevent to many singletons if they are close https://peerj.com/articles/1420/
+Is it legit to have that many singletons?
+
+
+Can't remove that many OTUs,huge effect on alpha div no?
+Tho quite well distributed across samples.
+Should reduce divergence between my samples.
 
 Shall we keep singletons for alpha div and stuff but aggregate at some phylogenetical levels for modeling approaches? 
 Hypothesis that phylogeny retains ecological features but is it true for bacteria? 
