@@ -246,7 +246,7 @@ for (i in 1:length(folder_names)){
     facet_wrap(~variable+controls, scale="free_y", ncol=4) + 
     theme_bw() + 
     scale_y_log10() +
-    labs(x="ASV pcr : total abundance filtering threshold", y="# Reads/ASVs") +
+    labs(x="OTU pcr : total abundance filtering threshold", y="# Reads/OTUs") +
     ggtitle(folder_names[[i]])+ 
     theme(panel.grid = element_blank(), 
           strip.background = element_blank(), 
@@ -285,9 +285,9 @@ order_23s <- unique(metab_lists$MAPP_23s$raw$motus$Order)
 ```
 
 
-### Remove non target ASVs
+### Remove non target OTUs
 
-Tag non target ASVs
+Tag non target OTUs
 ```{r}
 non_target_prop <- NULL
 non_targetconta_prop <- NULL
@@ -393,7 +393,7 @@ plottaxboots <- ggarrange(plotlist =  plot_tax_boots, ncol = 1,nrow = length(fol
 
 
 
-### Display noise in ASVs
+### Display noise in OTUs
 
 summarize noise in motus
 ```{r}
@@ -815,15 +815,15 @@ plot_singletons <- plot_singletons_reads/plot_singletons_otus
 ggsave("../Figures/singletons.png",plot_singletons)
 ```
 
-We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads
+We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads.
+Can this be interpretated as high endemism in peatlands bacteria??
+And loads of rare strains? 
+We are working at OTUs
 
-```{r}
-filtered_16s$otu_table <- filtered_16s$otu_table[which(rowSums(filtered_16s$otu_table)!=1),]
-filtered_16s$tidy_dataset()
+Shall we keep singletons for alpha div and stuff but aggregate at some phylogenetical levels for modeling approaches? 
+Hypothesis that phylogeny retains ecological features but is it true for bacteria? 
 
-filtered_its$otu_table <- filtered_its$otu_table[which(rowSums(filtered_its$otu_table)!=1),]
-filtered_its$tidy_dataset()
-```
+
 
 
 sample alpha div
