@@ -104,3 +104,73 @@ mod_23s_jSDM_poisson <- jSDM_poisson_log(
 
 install.packages("gdm")
 devtools::install_github('skiptoniam/bbgdm')
+
+
+trans_hellinger <- labdsv::hellinger(t(meco_23s$otu_table))
+trans_hellinger %<>% as.data.frame()
+# View(trans_hellinger)
+trans_hellinger$Sample <- rownames(trans_hellinger)
+trans_hellinger %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",Sample,perl = T))
+
+dist_mat <- vegan::vegdist(trans_hellinger[,-c(449,450)],method = "horn")
+hist(dist_mat)
+
+
+test <- left_join(trans_hellinger,data_sat[,c(3:5)])
+test %<>% relocate(Sample,X,Y) 
+
+test %<>% filter(!Sample%in%c("116","119","166"))
+
+test_data_sat <- data_sat %>% filter(Sample%in%test$Sample)
+
+test %<>% rename(siteCol=Sample)
+test_data_sat %<>% rename(siteCol=Sample)
+
+test_data_sat %<>% select(c("siteCol","X","Y","aet_lt","bulk","def_lt","evi_lt","gHM","gpp_lt","height",'lai_lt',"moist_lt","pdsi_lt","ph","pr_lt","ssm_lt","susm_lt","swe_lt","tmmn_lt","tmmx_lt","vpd_lt"))
+
+str(test_data_sat)
+str(test)
+argh <- gdm::formatsitepair(bioData = test,
+                            bioFormat = 1,
+                            dist="horn",
+                            abundance = T,
+                            siteColumn = "siteCol",
+                            XColumn = "X",
+                            YColumn = "Y",
+                            predData = test_data_sat)
+
+
+
+gdm_13s <- gdm::gdm(argh,
+                    geo=T)
+summary(gdm_13s)
+plot(gdm_13s)
+
+
+
+
+
+
+
+test_data_sat2 <- filter(data_sat,Sample%in%test$siteCol)
+test_data_sat2 %<>% rename(siteCol=Sample)
+test_data_sat2 %<>% select(c("siteCol","X","Y","aet_03","bulk","def_03","evi_03","gHM","gpp_03","height",'lai_03',"moist_03","pdsi_03","ph","pr_03","ssm_03","susm_03","swe_03","tmmn_03","tmmx_03","vpd_03"))
+
+
+argh2 <- gdm::formatsitepair(bioData = test,
+                             bioFormat = 1,
+                             dist="horn",
+                             abundance = T,
+                             siteColumn = "siteCol",
+                             XColumn = "X",
+                             YColumn = "Y",
+                             predData = test_data_sat2) 
+
+gdm_13s_march <- gdm::gdm(argh2,
+                          geo=T)
+
+
+plot(gdm_13s_march)
+
+
+# gdm with atlasr https://github.com/jiho/atlasr
