@@ -28,11 +28,37 @@ Subset some presumably important covariates
 ```{r}
 var_cor <- GGally::ggpairs(
     data_sat %>% 
-        select(c("X","Y","aet_lt","bulk","def_lt","evi_lt","gHM","gpp_lt","height",'lai_lt',"moist_lt","npp_lt","pdsi_lt","pet_lt","ph","pr_lt","ssm_lt","susm_lt","swe_lt","tmmn_lt","tmmx_lt","vap_lt","vpd_lt"))%>%
+        select(c("X",
+             "Y",
+             "aet_lt",
+             "bulk",
+             "srad_lt",
+             "def_lt",
+             "evi_lt",
+             "gHM",
+             "gpp_lt",
+             "height",
+             'lai_lt',
+             "moist_lt",
+             "npp_lt",
+             "pdsi_lt",
+             "pet_lt",
+             "ph",
+             "pr_lt",
+             "ssm_lt",
+             "susm_lt",
+             "swe_lt",
+             "tmmn_lt",
+             "tmmx_lt",
+             "vap_lt",
+             "vpd_lt",
+             "fpar_lt",
+             "soc",
+             "water"))%>%
         mutate(across(.fns = ~replace(., . ==  -9999 , NA))),
     progress = T,
     cardinality_threshold = 105)
-ggsave("Figures/cov_cor.png",var_cor,height = 15,width = 15)
+ggsave("../Figures/cov_cor.png",var_cor,height = 15,width = 15)
 ```
 
 # PCA on sites
@@ -91,12 +117,13 @@ arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
 eig <- PCA_bioclim$eig
 coord_pca <- as.data.frame(PCA_bioclim$ind$coord)
 coord_pca$site <- data_sat$Sample
+coord_pca$country <- data_sat$Country
 
 mul <- arrowMul(as.data.frame(PCA_bioclim$var$coord),
-               coord_pca)
+               PCA_bioclim$ind$coord)
 
-pca_site_biplot <- ggplot(coord_pca,aes(x=Dim.1,y=Dim.2))+
-    geom_point(color="orange")+
+pca_site_biplot <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="orange")+
     theme_classic2()+
     geom_vline(xintercept = 0,lty=2)+
     geom_hline(yintercept = 0,lty=2)+
@@ -124,4 +151,72 @@ ggsave(pca_site_biplot,filename="../Figures/PCA_sites.png")
 
 
 
+## Mean on early month
+
+
+```{r}
+var <- colnames(data_sat)[grep('_lt', names(data_sat))] # extract long term variables (as they also exist on monthly basis)
+months_we_want <- c("03","04","05")
+mean_month_df <- data_sat %>%
+    mutate(across(.cols= colnames(data_sat),.fns = ~replace(., . ==  -9999 , NA)))%>%
+    mutate(across(.cols=var,
+                  ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[3]))/3,
+                  .names = "{col}_mean_3"
+    ))
+```
+
+
+## Correlation for mean
+
+
+```{r}
+var_cor <- GGally::ggpairs(
+    mean_month_df %>% 
+        select(c("X",
+             "Y",
+             "aet_lt_mean_3",
+             "bulk",
+             "srad_lt_mean_3",
+             "def_lt_mean_3",
+             "evi_lt_mean_3",
+             "gHM",
+             "gpp_lt_mean_3",
+             "height",
+             'lai_lt_mean_3',
+             "moist_lt_mean_3",
+             "npp_lt_mean_3",
+             "pdsi_lt_mean_3",
+             "pet_lt_mean_3",
+             "ph",
+             "pr_lt_mean_3",
+             "ssm_lt_mean_3",
+             "susm_lt_mean_3",
+             "swe_lt_mean_3",
+             "tmmn_lt_mean_3",
+             "tmmx_lt_mean_3",
+             "vap_lt_mean_3",
+             "vpd_lt_mean_3",
+             "fpar_lt_mean_3",
+             "soc",
+             "water"))%>%
+        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),
+    progress = T,
+    cardinality_threshold = 105)
+ggsave("../Figures/cov_cor_mean_3.png",var_cor,height = 15,width = 15)
+```
+
+## Histograms covariates
+
+```{r}
+vars <- c("X","Y","bulk","gHM","height","ph","soc","water",colnames(data_sat)[grep('_lt', names(data_sat))])
+
+for(i in vars){
+  ggsave(plot=ggplot(mean_month_df,aes(x=mean_month_df[,i]))+
+             geom_histogram()+
+             theme_classic2()+
+             xlab(i),filename=paste0("../Figures/cov_histogram/",i,".png"))
+}
+```
 
