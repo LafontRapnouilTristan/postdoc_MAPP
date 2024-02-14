@@ -104,73 +104,49 @@ mod_23s_jSDM_poisson <- jSDM_poisson_log(
 
 install.packages("gdm")
 devtools::install_github('skiptoniam/bbgdm')
+library(microeco)
 
+bioclim_predictors <- c("siteCol","X","Y","aet_lt","bulk","def_lt","evi_lt","gHM","gpp_lt","height",'lai_lt',"moist_lt","pdsi_lt","ph","pr_lt","ssm_lt","susm_lt","swe_lt","tmmn_lt","tmmx_lt","vpd_lt")
 
-trans_hellinger <- labdsv::hellinger(t(meco_23s$otu_table))
-trans_hellinger %<>% as.data.frame()
-# View(trans_hellinger)
-trans_hellinger$Sample <- rownames(trans_hellinger)
-trans_hellinger %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",Sample,perl = T))
-
-dist_mat <- vegan::vegdist(trans_hellinger[,-c(449,450)],method = "horn")
-hist(dist_mat)
-
-
-test <- left_join(trans_hellinger,data_sat[,c(3:5)])
-test %<>% relocate(Sample,X,Y) 
-
-test %<>% filter(!Sample%in%c("116","119","166"))
-
-test_data_sat <- data_sat %>% filter(Sample%in%test$Sample)
-
-test %<>% rename(siteCol=Sample)
-test_data_sat %<>% rename(siteCol=Sample)
-
-test_data_sat %<>% select(c("siteCol","X","Y","aet_lt","bulk","def_lt","evi_lt","gHM","gpp_lt","height",'lai_lt',"moist_lt","pdsi_lt","ph","pr_lt","ssm_lt","susm_lt","swe_lt","tmmn_lt","tmmx_lt","vpd_lt"))
-
-str(test_data_sat)
-str(test)
-argh <- gdm::formatsitepair(bioData = test,
-                            bioFormat = 1,
-                            dist="horn",
-                            abundance = T,
-                            siteColumn = "siteCol",
-                            XColumn = "X",
-                            YColumn = "Y",
-                            predData = test_data_sat)
-
-
-
-gdm_13s <- gdm::gdm(argh,
-                    geo=T)
-summary(gdm_13s)
-plot(gdm_13s)
-
-
-
-
-
-
-
-test_data_sat2 <- filter(data_sat,Sample%in%test$siteCol)
-test_data_sat2 %<>% rename(siteCol=Sample)
-test_data_sat2 %<>% select(c("siteCol","X","Y","aet_03","bulk","def_03","evi_03","gHM","gpp_03","height",'lai_03',"moist_03","pdsi_03","ph","pr_03","ssm_03","susm_03","swe_03","tmmn_03","tmmx_03","vpd_03"))
-
-
-argh2 <- gdm::formatsitepair(bioData = test,
-                             bioFormat = 1,
-                             dist="horn",
-                             abundance = T,
-                             siteColumn = "siteCol",
-                             XColumn = "X",
-                             YColumn = "Y",
-                             predData = test_data_sat2) 
-
-gdm_13s_march <- gdm::gdm(argh2,
-                          geo=T)
-
-
-plot(gdm_13s_march)
-
-
+gdm_formated <- NULL
+gdm_fitted <- NULL
+for(i in c("16s","18s","23s")){
+    
+    meco_tmp <- get(paste0("meco_",i)) # get com datasets
+    data_sat_tmp <- data_sat
+    
+    comunity_df_hellingered <- as.data.frame(labdsv::hellinger(t(meco_tmp$otu_table))) # extract community matrices and transform to hellinger
+    
+    comunity_df_hellingered$siteCol <-  gsub("[A-Z]|-|(?=_).*","",rownames(comunity_df_hellingered),perl = T)  # get site name (i.e., sample)
+    comunity_df_hellingered %<>%  
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))%>% # reformat 1 into 001 and 64 to 064 etc...
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))
+    data_sat_tmp %<>% rename(siteCol=Sample) # rename 
+    
+    gdm_biodata <- left_join(comunity_df_hellingered,data_sat_tmp[,c(3:5)]) %>% # create gdm_biodata with site X and Y (long and lat)
+        relocate(siteCol,X,Y) %>% # relocate columns
+        filter(!siteCol%in%c("116","119","166","042047","047042")) # remove problematic samples
+    
+    gdm_preddata <- data_sat_tmp %>%
+        filter(siteCol%in%gdm_biodata$siteCol) %>% #remove sites not in biodata
+        select(bioclim_predictors) # get only variables we are interested in
+    
+    gdm_formated_tmp <- gdm::formatsitepair(bioData = gdm_biodata, # create data in the gdm format
+                                            bioFormat = 1,
+                                            dist="horn",
+                                            abundance = T,
+                                            siteColumn = "siteCol",
+                                            XColumn = "X",
+                                            YColumn = "Y",
+                                            predData = gdm_preddata)
+    gdm_formated[[i]] <- gdm_formated_tmp # store formated data
+    gdm_fitted[[i]] <- gdm::gdm(gdm_formated_tmp, # fit gdm
+                                geo = T)
+}
+View(gdm_fitted$"16s")
+plot(gdm_fitted$"18s")
+plot(gdm_fitted$"23s")
+plot(gdm_fitted$"16s")
+View(gdm::plot.gdm)
 # gdm with atlasr https://github.com/jiho/atlasr
+save.image(file="env_gdm_testing.Rdata")
