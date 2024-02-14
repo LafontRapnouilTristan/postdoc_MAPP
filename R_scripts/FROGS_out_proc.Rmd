@@ -859,6 +859,20 @@ ggsave(plot_alpha,filename="../Figures/plot_alpha_ratio.png")
 
 
 
+alpha <- colSums(meco_16s$otu_table!=0)
+single_otu <-  colSums(meco_16s$otu_table==1)
+non_single_otu <- alpha-single_otu
+df_tmp <- data.frame(value = non_single_otu,
+                     sample=1:ncol(meco_16s$otu_table))
+ggsave(ggplot(df_tmp,aes(x=sample,y=value))+
+            geom_bar(stat="identity",fill="darkorange")+
+            theme_classic2()+
+            ggtitle("MAPP_16s non singletons alphadiversity")+
+            theme(plot.title = element_text(face='bold'))+
+            xlab("samples_row"),
+filename = "../Figures/plot_alpha_no_singletons_16s.png")
+
+
 alpha_plot_list <- NULL
 for(i in folder_names){
     data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
