@@ -1,5 +1,5 @@
 ```{r}
-EcophyCofog::Library(c("EcophyCofog","readr","dplyr","magrittr","ggplot2","patchwork","ggpubr","tidyr",'Factominer'))
+EcophyCofog::Library(c("EcophyCofog","readr","dplyr","magrittr","ggplot2","patchwork","ggpubr","tidyr",'FactoMineR',"missMDA"))
 ```
 
 
@@ -60,6 +60,109 @@ var_cor <- GGally::ggpairs(
     cardinality_threshold = 105)
 ggsave("../Figures/cov_cor.png",var_cor,height = 15,width = 15)
 ```
+
+
+# test missMDA imputing
+
+```{r}
+nb <- estim_ncpPCA(data_sat %>% 
+    select(c("X",
+             "Y",
+             "aet_lt",
+             "bulk",
+             "srad_lt",
+             "def_lt",
+             "evi_lt",
+             "gHM",
+             "gpp_lt",
+             "height",
+             'lai_lt',
+             "moist_lt",
+             "npp_lt",
+             "pdsi_lt",
+             "pet_lt",
+             "ph",
+             "pr_lt",
+             "ssm_lt",
+             "susm_lt",
+             "swe_lt",
+             "tmmn_lt",
+             "tmmx_lt",
+             "vap_lt",
+             "vpd_lt",
+             "fpar_lt",
+             "soc",
+             "water"
+             ))%>%
+        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),scale=T)
+imputed_data <- imputePCA(data_sat %>% 
+    select(c("X",
+             "Y",
+             "aet_lt",
+             "bulk",
+             "srad_lt",
+             "def_lt",
+             "evi_lt",
+             "gHM",
+             "gpp_lt",
+             "height",
+             'lai_lt',
+             "moist_lt",
+             "npp_lt",
+             "pdsi_lt",
+             "pet_lt",
+             "ph",
+             "pr_lt",
+             "ssm_lt",
+             "susm_lt",
+             "swe_lt",
+             "tmmn_lt",
+             "tmmx_lt",
+             "vap_lt",
+             "vpd_lt",
+             "fpar_lt",
+             "soc",
+             "water"
+             ))%>%
+        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),ncp=5,scale=T)
+res.pca <- FactoMineR::PCA(imputed_data$completeObs)
+```
+
+```{r}
+mi <- MIPCA(data_sat %>% 
+    select(c("X",
+             "Y",
+             "aet_lt",
+             "bulk",
+             "srad_lt",
+             "def_lt",
+             "evi_lt",
+             "gHM",
+             "gpp_lt",
+             "height",
+             'lai_lt',
+             "moist_lt",
+             "npp_lt",
+             "pdsi_lt",
+             "pet_lt",
+             "ph",
+             "pr_lt",
+             "ssm_lt",
+             "susm_lt",
+             "swe_lt",
+             "tmmn_lt",
+             "tmmx_lt",
+             "vap_lt",
+             "vpd_lt",
+             "fpar_lt",
+             "soc",
+             "water"
+             ))%>%
+        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),scale = T,ncp=5)
+
+plot(mi)
+```
+
 
 # PCA on sites
 
