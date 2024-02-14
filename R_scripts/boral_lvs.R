@@ -149,4 +149,4 @@ plot(gdm_fitted$"23s")
 plot(gdm_fitted$"16s")
 View(gdm::plot.gdm)
 # gdm with atlasr https://github.com/jiho/atlasr
-save.image(file="env_gdm_testing.Rdata")
+save.image(file="ressource//env_gdm_testing.Rdata")
