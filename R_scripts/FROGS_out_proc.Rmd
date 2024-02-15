@@ -968,7 +968,7 @@ filename= "../Figures/plot_depths_no_true_singletons_16s.png")
 ```
 
 
-## Clean and save ENV
+ ## Clean and save ENV
 
 ```{r}
 param_list <- list(boots_thshld=boots_thshld,
