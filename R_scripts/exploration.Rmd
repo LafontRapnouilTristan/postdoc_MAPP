@@ -6,6 +6,8 @@ load("../output/microeco_obj.Rdata")
 path_frogs_out <- "../ressource/bioinfo_pipeline_FROGS/FROGS_galaxy_outputs/"
 folder_names <- list.files(path_frogs_out)
 folder_names <- folder_names[1:3]
+data_set_colors <- c("aquamarine4","darkorange","darkorchid4")
+names(data_set_colors) <- folder_names
 ```
 
 
@@ -78,38 +80,27 @@ ggsave(filename = "../Figures/maps_richness_and_reads_europe.png",mapprichreadsp
 ```
 
 
-###plot seq depth for each datasets
+###cor seq depths and richness across datasets
 
 ```{r}
-plot_seq_depth_all <- ggplot()+
-        theme_classic2()
-for(i in folder_names){
-    
-    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
-    plot_seq_depth_all<- plot_seq_depth_all + 
-        geom_point(data=data_temp$sample_table,
-                   aes(x=1:(nrow(data_temp$sample_table)),y=reads_post),alpha=.5,shape=20+which(folder_names==i),fill=colorRampPalette(brewer.pal(length(folder_names), "Dark2"))(length(folder_names))[which(folder_names==i)])
-}
-```
-
-```{r}
-
 data_temp <- meco_16s$sample_table[,c("sample_id","motus_post","reads_post")]
 data_temp %<>% rename(motus_16s=motus_post,
                       reads_16s=reads_post)%>%
-    mutate(motus_23s=meco_23s$sample_table$motus_post,
-                      reads_23s=meco_23s$sample_table$reads_post,
-                      motus_18s=meco_18s$sample_table$motus_post,
-                      reads_18s=meco_18s$sample_table$reads_post)
+    mutate(motus_18s=meco_18s$sample_table$motus_post,
+           reads_18s=meco_18s$sample_table$reads_post,
+           motus_23s=meco_23s$sample_table$motus_post,
+           reads_23s=meco_23s$sample_table$reads_post)
 
-GGally::ggpairs(
+cor_reads_otus <- GGally::ggpairs(
     data_temp[,-1],
     progress = F
 )
+
+ggsave(cor_reads_otus,filename = "../Figures/cor_reads_otus.png",width=9,height = 9)
 ```
 
 
-### Plot richness
+### Plot  richness and reads
 
 ```{r}
 plot<- data_temp %>%
@@ -118,7 +109,7 @@ plot<- data_temp %>%
     ggplot()+
     geom_boxplot(aes(x=variable,y=value,fill=variable))+
     theme_classic2()+
-    scale_fill_manual(values=RColorBrewer::brewer.pal(3,"Dark2"))+
+    scale_fill_manual(values=unname(data_set_colors))+
     scale_y_log10()+
     ggtitle("ASVs number")+
     theme(plot.title = element_text(face="bold"))+
@@ -129,7 +120,7 @@ plot<- data_temp %>%
     ggplot()+
     geom_boxplot(aes(x=variable,y=value,fill=variable))+
     theme_classic2()+
-    scale_fill_manual(values=RColorBrewer::brewer.pal(3,"Dark2"))+
+    scale_fill_manual(values=unname(data_set_colors))+
     scale_y_log10()+
     ggtitle("Reads number")+
     theme(plot.title = element_text(face="bold"))+
@@ -195,17 +186,35 @@ plot_donuts <- plot_donuts_list[[1]]/plot_donuts_list[[2]]/plot_donuts_list[[3]]
 ggsave("../Figures/plot_donuts.png",plot_donuts,height = 12,width = 10)
 ```
 
+donut plot without singletons fur 16s
+```{r}
+tmp16s <- clone(meco_16s)
+tmp16s$otu_table %<>% filter(rowSums(.)>1)
+tmp16s$tidy_dataset()
 
 
+tmp16s <- trans_abund$new(tmp16s,taxrank = "Order",ntaxa = 8,groupmean = "type")
+    plot_data <- tmp16s$data_abund
+    use_taxanames <- tmp16s$data_taxanames
+    plot_data$Taxonomy[!plot_data$Taxonomy %in% use_taxanames] <- "Others"
+    plot_data %<>% 
+        dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+        dplyr::summarise(Abundance = sum(Abundance)) %>% 
+        as.data.frame(stringsAsFactors = FALSE)
+    plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames, 
+                                             "Others"))
+    plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
+    ggdonutchart(plot_data,"Abundance",
+             fill="Taxonomy",
+             label = "label",
+             color = "white",
+             palette =  colorRampPalette(brewer.pal(8, "Dark2"))(9))+
+    theme(legend.position = "right")+
+    ggtitle("MAPP_16s no true singletons")+
+    theme(plot.title=element_text(face='bold'))
+```
 
-
-
-
-
-
-
-
-
+because true singleton are only ~4% of total reads they have low impact on relab display of diversity and communities
 
 ### Hellinger transformation
 
@@ -218,6 +227,20 @@ data_16s_hell$otu_table <- t(t(labdsv::hellinger(data_16s_hell$otu_table)))
 
 data_18s_hell <- clone(meco_18s) # hellinger transformation
 data_18s_hell$otu_table <- t(t(labdsv::hellinger(data_18s_hell$otu_table)))
+```
+
+### Plot dissimilarity
+
+```{r}
+diss16s <- vegan::vegdist(meco_16s$otu_table, method = "horn")
+diss18s <- vegan::vegdist(meco_18s$otu_table, method = "horn")
+diss23s <- vegan::vegdist(meco_23s$otu_table, method = "horn")
+
+diss16shell <- vegan::vegdist(data_16s_hell$otu_table, method = "horn")
+diss18shell <- vegan::vegdist(data_18s_hell$otu_table, method = "horn")
+diss23shell <- vegan::vegdist(data_23s_hell$otu_table, method = "horn")
+
+ggplot(diss16s)
 ```
 
 
