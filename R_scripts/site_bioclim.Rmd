@@ -19,10 +19,41 @@ data_sat %<>%
     arrange(Sample)# fix sample ID to match the format of other MAPP datasets
 ```
 
+# Mean on early month
+
+Impute before mean? Or impute on mean? (missMDA)
+```{r}
+var <- colnames(data_sat)[grep('_lt', names(data_sat))] # extract long term variables (as they also exist on monthly basis)
+months_we_want <- c("03","04","05")
+mean_month_df <- data_sat %>%
+    mutate(across(.cols= colnames(data_sat),.fns = ~replace(., . ==  -9999 , NA)))%>%
+    mutate(across(.cols=all_of(var),
+                  ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[3]))/3,
+                  .names = "{col}_m3"
+    ))
+```
+
+
+
+# Histograms covariates
+
+```{r}
+vars <- c("X","Y","bulk","gHM","height","ph","soc","water",colnames(mean_month_df)[grep('_lt', names(mean_month_df))])
+
+for(i in vars){
+  ggsave(plot=ggplot(mean_month_df,aes(x=mean_month_df[,i]))+
+             geom_histogram(fill="darkolivegreen3")+
+             theme_classic2()+
+             xlab(i),filename=paste0("../Figures/cov_histogram/",i,".png"),height = 8,width = 8)
+}
+```
 
 
 # Visualize correlation 
 
+## correlation on long term
 Subset some presumably important covariates
 
 ```{r}
@@ -55,15 +86,53 @@ var_cor <- GGally::ggpairs(
              "fpar_lt",
              "soc",
              "water"))%>%
-        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),
+        mutate_all(.funs = ~replace(., . ==  -9999 , NA)),
     progress = T,
     cardinality_threshold = 105)
-ggsave("../Figures/cov_cor.png",var_cor,height = 15,width = 15)
+ggsave("../Figures/cov_cor.png",var_cor,height = 16,width = 16)
 ```
 
+## Correlation on three months mean
+
+```{r}
+var_cor <- GGally::ggpairs(
+    mean_month_df %>% 
+        select(c("X",
+             "Y",
+             "aet_lt_m3",
+             "bulk",
+             "srad_lt_m3",
+             "def_lt_m3",
+             "evi_lt_m3",
+             "gHM",
+             "gpp_lt_m3",
+             "height",
+             'lai_lt_m3',
+             "moist_lt_m3",
+             "npp_lt_m3",
+             "pdsi_lt_m3",
+             "pet_lt_m3",
+             "ph",
+             "pr_lt_m3",
+             "ssm_lt_m3",
+             "susm_lt_m3",
+             "swe_lt_m3",
+             "tmmn_lt_m3",
+             "tmmx_lt_m3",
+             "vap_lt_m3",
+             "vpd_lt_m3",
+             "fpar_lt_m3",
+             "soc",
+             "water"))%>%
+        mutate_all(.funs = ~replace(., . ==  -9999 , NA)),
+    progress = T,
+    cardinality_threshold = 105)
+ggsave("../Figures/cov_cor_mean_3.png",var_cor,height = 16,width = 16)
+```
 
 # test missMDA imputing
 
+## simple imputation
 ```{r}
 nb <- estim_ncpPCA(data_sat %>% 
     select(c("X",
@@ -128,6 +197,8 @@ imputed_data <- imputePCA(data_sat %>%
 res.pca <- FactoMineR::PCA(imputed_data$completeObs)
 ```
 
+## multiple imputation
+
 ```{r}
 mi <- MIPCA(data_sat %>% 
     select(c("X",
@@ -159,13 +230,12 @@ mi <- MIPCA(data_sat %>%
              "water"
              ))%>%
         mutate(across(.fns = ~replace(., . ==  -9999 , NA))),scale = T,ncp=5)
-
-plot(mi)
 ```
 
 
 # PCA on sites
 
+NA imputed as mean
 ```{r}
 PCA_bioclim <- data_sat %>% 
     select(c("X",
@@ -250,76 +320,3 @@ pca_site_biplot <- ggplot()+
 ggsave(pca_site_biplot,filename="../Figures/PCA_sites.png")
     
 ```
-
-
-
-
-## Mean on early month
-
-
-```{r}
-var <- colnames(data_sat)[grep('_lt', names(data_sat))] # extract long term variables (as they also exist on monthly basis)
-months_we_want <- c("03","04","05")
-mean_month_df <- data_sat %>%
-    mutate(across(.cols= colnames(data_sat),.fns = ~replace(., . ==  -9999 , NA)))%>%
-    mutate(across(.cols=var,
-                  ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
-                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
-                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[3]))/3,
-                  .names = "{col}_mean_3"
-    ))
-```
-
-
-## Correlation for mean
-
-
-```{r}
-var_cor <- GGally::ggpairs(
-    mean_month_df %>% 
-        select(c("X",
-             "Y",
-             "aet_lt_mean_3",
-             "bulk",
-             "srad_lt_mean_3",
-             "def_lt_mean_3",
-             "evi_lt_mean_3",
-             "gHM",
-             "gpp_lt_mean_3",
-             "height",
-             'lai_lt_mean_3',
-             "moist_lt_mean_3",
-             "npp_lt_mean_3",
-             "pdsi_lt_mean_3",
-             "pet_lt_mean_3",
-             "ph",
-             "pr_lt_mean_3",
-             "ssm_lt_mean_3",
-             "susm_lt_mean_3",
-             "swe_lt_mean_3",
-             "tmmn_lt_mean_3",
-             "tmmx_lt_mean_3",
-             "vap_lt_mean_3",
-             "vpd_lt_mean_3",
-             "fpar_lt_mean_3",
-             "soc",
-             "water"))%>%
-        mutate(across(.fns = ~replace(., . ==  -9999 , NA))),
-    progress = T,
-    cardinality_threshold = 105)
-ggsave("../Figures/cov_cor_mean_3.png",var_cor,height = 15,width = 15)
-```
-
-## Histograms covariates
-
-```{r}
-vars <- c("X","Y","bulk","gHM","height","ph","soc","water",colnames(data_sat)[grep('_lt', names(data_sat))])
-
-for(i in vars){
-  ggsave(plot=ggplot(mean_month_df,aes(x=mean_month_df[,i]))+
-             geom_histogram()+
-             theme_classic2()+
-             xlab(i),filename=paste0("../Figures/cov_histogram/",i,".png"))
-}
-```
-
