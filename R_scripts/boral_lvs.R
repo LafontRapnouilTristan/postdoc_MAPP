@@ -3,6 +3,7 @@
 #jSDM
 #HSMC
 #MIXOMICS
+# LVM GLLVM
 
 load("output/microeco_obj.Rdata")
 library(boral)
