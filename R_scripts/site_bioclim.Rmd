@@ -25,7 +25,7 @@ Impute before mean? Or impute on mean? (missMDA)
 ```{r}
 var <- colnames(data_sat)[grep('_lt', names(data_sat))] # extract long term variables (as they also exist on monthly basis)
 months_we_want <- c("03","04","05")
-mean_month_df <- data_sat %>%
+data_sat %<>%
     mutate(across(.cols= colnames(data_sat),.fns = ~replace(., . ==  -9999 , NA)))%>%
     mutate(across(.cols=all_of(var),
                   ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
