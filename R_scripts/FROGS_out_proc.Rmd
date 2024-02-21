@@ -566,7 +566,7 @@ Differential abundance implementation in this models.
 
 
 
-## Start data wrangling
+## Data wrangling
 
 ### Transform to physeq lists
 
@@ -699,7 +699,7 @@ meco_23s$sample_table$nb_reads <- colSums(meco_23s$otu_table>0)
 gc()
 ```
 
-### Rarefaction Curves
+## Rarefaction Curves
 ```{r}
 # 16s ##
 
@@ -968,7 +968,7 @@ filename= "../Figures/plot_depths_no_true_singletons_16s.png")
 ```
 
 
- ## Clean and save ENV
+## Clean and save ENV
 
 ```{r}
 param_list <- list(boots_thshld=boots_thshld,
