@@ -232,91 +232,37 @@ data_18s_hell$otu_table <- t(t(labdsv::hellinger(data_18s_hell$otu_table)))
 ### Plot dissimilarity
 
 ```{r}
-diss16s <- vegan::vegdist(meco_16s$otu_table, method = "horn")
-diss18s <- vegan::vegdist(meco_18s$otu_table, method = "horn")
-diss23s <- vegan::vegdist(meco_23s$otu_table, method = "horn")
-
-diss16shell <- vegan::vegdist(data_16s_hell$otu_table, method = "horn")
-diss18shell <- vegan::vegdist(data_18s_hell$otu_table, method = "horn")
-diss23shell <- vegan::vegdist(data_23s_hell$otu_table, method = "horn")
-
-ggplot(diss16s)
+# diss16s <- vegan::vegdist(meco_16s$otu_table, method = "horn")
+# diss18s <- vegan::vegdist(meco_18s$otu_table, method = "horn")
+# diss23s <- vegan::vegdist(meco_23s$otu_table, method = "horn")
+# 
+# diss16shell <- vegan::vegdist(data_16s_hell$otu_table, method = "horn")
+# diss18shell <- vegan::vegdist(data_18s_hell$otu_table, method = "horn")
+# diss23shell <- vegan::vegdist(data_23s_hell$otu_table, method = "horn")
+# 
+# ggplot(diss16s)
 ```
 
-
-### PCOA
-
+pcoa 
 ```{r}
-ordi23s <- ordinate(file2meco::meco2phyloseq(data_23s_hell), "PCoA", "horn")
+plot_pcoa_list <- NULL
+for(i in folder_names){
+    data_temp <- get(paste0("meco_",gsub("MAPP_","",i)))
+    data_temp$cal_betadiv(method = "horn")
+    data_temp <- trans_beta$new(data_temp,measure = "horn")
+    data_temp$cal_ordination(ordination = "PCoA")
+    plot_pcoa_list[[i]] <- data_temp$plot_ordination(plot_type = "point",point_alpha = 0)+
+        geom_point(color=data_set_colors[i],shape=16)+
+        theme_classic2()+
+        ggtitle("MAPP 23s")+
+        theme(plot.title = element_text(face='bold'))+
+        geom_vline(xintercept = 0,lty=2)+
+        geom_hline(yintercept = 0,lty=2)
+}
 
-expl1 <- ordi23s$values$Relative_eig[1]
-expl2 <- ordi23s$values$Relative_eig[2]
-expl3 <- ordi23s$values$Relative_eig[3]
-df_ordi_23s <- data.frame(dim1=ordi23s$vectors[,1],
-                          dim2=ordi23s$vectors[,2],
-                          dim3=ordi23s$vectors[,3],
-                          country=data_23s_hell$sample_table$Country
-                          )
-
-
-pcoa23s <- ggplot(df_ordi_23s,aes(x=dim1,y=dim2,color=country))+
-  geom_point()+
-  theme_classic()+
-  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
-  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)+
-  ggtitle("MAPP_23s")+
-  theme(plot.title = element_text(face="bold"))
-
-ordi16s <- ordinate(file2meco::meco2phyloseq(data_16s_hell), "PCoA", "horn")
-
-expl1 <- ordi16s$values$Relative_eig[1]
-expl2 <- ordi16s$values$Relative_eig[2]
-expl3 <- ordi16s$values$Relative_eig[3]
-df_ordi_16s <- data.frame(dim1=ordi16s$vectors[,1],
-                          dim2=ordi16s$vectors[,2],
-                          dim3=ordi16s$vectors[,3],
-                          country=data_16s_hell$sample_table$Country
-                          )
-
-
-pcoa16s <- ggplot(df_ordi_16s,aes(x=dim1,y=dim2,color=country))+
-  geom_point()+
-  theme_classic()+
-  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
-  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)+
-  ggtitle("MAPP_16s")+
-  theme(plot.title = element_text(face="bold"))
-
-
-ordi18s <- ordinate(file2meco::meco2phyloseq(data_18s_hell), "PCoA", "horn")
-
-expl1 <- ordi18s$values$Relative_eig[1]
-expl2 <- ordi18s$values$Relative_eig[2]
-expl3 <- ordi18s$values$Relative_eig[3]
-df_ordi_18s <- data.frame(dim1=ordi18s$vectors[,1],
-                          dim2=ordi18s$vectors[,2],
-                          dim3=ordi18s$vectors[,3],
-                          country=data_18s_hell$sample_table$Country
-                          )
-
-
-pcoa18s <- ggplot(df_ordi_18s,aes(x=dim1,y=dim2,color=country))+
-  geom_point()+
-  theme_classic()+
-  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
-  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
-  geom_vline(xintercept=0)+
-  geom_hline(yintercept=0)+
-  ggtitle("MAPP_18s")+
-  theme(plot.title = element_text(face="bold"))
-
-
+pcoaplot <- plot_pcoa_list$MAPP_16s/plot_pcoa_list$MAPP_18s/plot_pcoa_list$MAPP_23s
+ggsave(pcoaplot,filename = "../Figures/pcoa.png",width=8,height = 14)
 ```
-
 
 
 ### JUNK
