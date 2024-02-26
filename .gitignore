@@ -6,3 +6,4 @@ ressource/
 data/
 output/
 postdoc_MAPP.Rproj
+*.gexf
