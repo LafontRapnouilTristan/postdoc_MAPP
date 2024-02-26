@@ -1,5 +1,5 @@
 ```{r}
-EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer"))
+EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer","rgexf"))
 
 load("../output/microeco_obj.Rdata")
 
@@ -264,6 +264,15 @@ pcoaplot <- plot_pcoa_list$MAPP_16s/plot_pcoa_list$MAPP_18s/plot_pcoa_list$MAPP_
 ggsave(pcoaplot,filename = "../Figures/pcoa.png",width=8,height = 14)
 ```
 
+# Plot Network
+
+```{r}
+t1 <- trans_network$new(dataset = meco_16s, cor_method = "spearman", filter_thres = 0.0001)
+t1$cal_network()
+t1$cal_module(method = "cluster_fast_greedy")
+t1$plot_network()
+t1$save_network(filepath = "../Figures/network.gexf")
+```
 
 ### JUNK
 
