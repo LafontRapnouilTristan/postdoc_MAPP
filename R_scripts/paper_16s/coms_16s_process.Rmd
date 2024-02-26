@@ -1,0 +1,297 @@
+# Load
+
+```{r}
+EcophyCofog::Library(c("EcophyCofog","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","readxl","microeco","file2meco","RColorBrewer","vegan","phyloseq"))
+```
+
+```{r}
+load("../../output/microeco_obj.Rdata")
+rm(meco_18s,meco_23s)
+site_data <- read.csv("../../ressource/Site_edaphic_data/MappPtsSampled.csv")
+site_data %<>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample))%>% # fix 87a and 87b sample ids
+    arrange(Sample)# fix sample ID to match the format of other MAPP datasets
+```
+
+# process
+
+## Select sites
+
+```{r}
+setdiff(gsub("[A-Z]|-|(?=_).*","",meco_16s$sample_table$sample_id,perl = T),site_data$Sample) # pb samples "042047" "047042" "119"    "166"    "116" 
+
+meco_16s$sample_table %<>% filter(!Sample%in%c("116","119","166","042047","047042")) 
+meco_16s$tidy_dataset()
+```
+
+
+
+## rm singletons
+
+```{r}
+nrow(meco_16s$otu_table) #273894 OTUs
+meco_16s$otu_table %<>% filter(rowSums(meco_16s$otu_table)>1)
+meco_16s$tidy_dataset()
+nrow(meco_16s$otu_table) # 23010
+meco_16s$sample_table %<>% mutate(nb_reads=colSums(meco_16s$otu_table),
+                                  nb_motus=colSums(meco_16s$otu_table!=0))
+```
+
+check OTU reads frequency
+```{r}
+meco_16s$otu_table%>%
+    reframe(counts=rowSums(.))%>%
+    data.frame()%>%
+    ggplot(aes(x=log(counts)))+
+    geom_histogram()+
+    theme_classic2()
+```
+
+## test filtering ASVs freq
+```{r}
+prevalence <- c(0,5,10,15,20) # set prevalence threshold 0/5/10/15 and 20% of our 207 samples 
+n_sites <- 207 # 207 samples
+prevalence_nsites <- floor(n_sites*0.01*prevalence) # convert to number of sites
+relab_thrshld <- c(0,1e-3,1e-5,1e-7)
+
+com_matrices_list <- NULL
+for(i in prevalence_nsites){
+    matrix_tmp <- t(meco_16s$otu_table)   
+    
+    matrix_tmp <- matrix_tmp[,which(colSums(matrix_tmp!=0)>i)]
+    for(j in relab_thrshld){
+        matrix_tmp <- matrix_tmp[,which(colSums(matrix_tmp)/sum(matrix_tmp)>j)]
+        matrix_tmp <- matrix_tmp[rowSums(matrix_tmp)!=0,]
+        com_matrices_list[[paste0("com_prev_",i,"_relab_",j)]] <- matrix_tmp
+    }
+}
+
+
+com_matrices_list <- com_matrices_list[grepl("relab_0$",names(com_matrices_list))]
+
+nmds_test <- NULL
+centro_coord <- data.frame(nmds1=character(0),nmds2=character(0),filt=character(0))
+for(i in 1:length(com_matrices_list)){
+    to_fortify <- metaMDS(com_matrices_list[[i]],distance = "horn")
+    nmds_test[[names(com_matrices_list[i])]] <- to_fortify
+    centro_coord_tmp <- fortify(to_fortify)%>%
+        filter(score=="sites")%>%
+        reframe(nmds1=sum(NMDS1)/202,nmds2=sum(NMDS2)/202)%>%
+        mutate(filt=names(com_matrices_list[i]))
+    centro_coord <- rbind(centro_coord,centro_coord_tmp) 
+}
+
+plot_list <- NULL
+for(i in 1:length(nmds_test)){
+    data_tmp <- filter(fortify(nmds_test[[i]]),score=="sites")
+    data_tmp %<>% mutate(sample=gsub("[A-Z]|-|(?=_).*","",label,perl = T))
+    data_tmp$country <- meco_16s$sample_table$Country
+    plot_list[[names(nmds_test)[i]]]<- data_tmp %>%
+        ggplot(aes(x=NMDS1,y=NMDS2,color=country))+
+        geom_point()+
+        theme_classic2()+
+        ggtitle(paste0(names(nmds_test)[i],": ",nrow(fortify(nmds_test[[i]]))-202," ASVs"))
+}
+yikes<- (plot_list$com_prev_0_relab_0+plot_list$com_prev_10_relab_0)/(plot_list$com_prev_20_relab_0+plot_list$com_prev_31_relab_0)/(plot_list$com_prev_41_relab_0+plot_spacer())+plot_layout(guides="collect")
+
+procrustes_res <- NULL
+for(i in 2:length(nmds_test)){
+    procrustes_res[[i-1]] <- procrustes(nmds_test[[1]],nmds_test[[i]])
+}
+
+
+pro_plot <-  NULL
+for(i in 1:length(procrustes_res)){
+    pro.test <- procrustes_res[[i]]
+    ctest <- data.frame(nmds1=pro.test$Yrot[,1],
+                        nmds2=pro.test$Yrot[,2],
+                        xnmds1=pro.test$X[,1],
+                        xnmds2=pro.test$X[,2])
+    
+    pro.error <- data.frame(err=residuals(procrustes_res[[i]]),sam_id=1:202)
+    quantiles <- quantile(pro.error$err,probs = c(0.25,0.50,0.75))
+    pro_plot[[i]] <- ggplot(ctest) +
+        geom_point(aes(x=nmds1, y=nmds2)) +
+        geom_point(aes(x=xnmds1, y=xnmds2)) +
+        geom_segment(aes(x=nmds1,y=nmds2,xend=xnmds1,yend=xnmds2),arrow=arrow(length=unit(0.2,"cm")))+
+        coord_fixed()+
+        theme_classic2()+
+        ggtitle(paste0(names(nmds_test)[i+1],": ",nrow(fortify(nmds_test[[i+1]]))-202," ASVs")) +
+        ggplot(pro.error,aes(x = sam_id, y=err))+
+        geom_bar(stat='identity',width = 1)+
+        geom_hline(yintercept = quantiles[1],linetype="dashed")+
+        geom_hline(yintercept = quantiles[2])+
+        geom_hline(yintercept = quantiles[3],linetype="dashed")+
+        theme_classic2()+
+        xlab("site row")+
+        ylab("Residual fit")+ 
+        plot_layout(widths = c(1.4,1.6))
+}
+
+ggsave(plot=pro_plot[[1]]/pro_plot[[2]]/pro_plot[[3]]/pro_plot[[4]],
+       filename = "../../Figures/procrustes.png",width = 10,height = 12)
+```
+
+
+get site coord in our 5 nmds
+```{r}
+site_coord_nmds <- data.frame(sample=data_tmp$sample,
+                              nmds1_0prev=fortify(nmds_test$com_prev_0_relab_0)$NMDS1[1:202],
+                              nmds2_0prev=fortify(nmds_test$com_prev_0_relab_0)$NMDS2[1:202],
+                              nmds1_10prev=fortify(nmds_test$com_prev_10_relab_0)$NMDS1[1:202],
+                              nmds2_10prev=fortify(nmds_test$com_prev_10_relab_0)$NMDS2[1:202],
+                              nmds1_20prev=fortify(nmds_test$com_prev_20_relab_0)$NMDS1[1:202],
+                              nmds2_20prev=fortify(nmds_test$com_prev_20_relab_0)$NMDS2[1:202],
+                              nmds1_31prev=fortify(nmds_test$com_prev_31_relab_0)$NMDS1[1:202],
+                              nmds2_31prev=fortify(nmds_test$com_prev_31_relab_0)$NMDS2[1:202],
+                              nmds1_41prev=fortify(nmds_test$com_prev_41_relab_0)$NMDS1[1:202],
+                              nmds2_41prev=fortify(nmds_test$com_prev_41_relab_0)$NMDS2[1:202])
+
+site_coord_nmds <- data.frame(sample=rep(data_tmp$sample,5),
+                              data_set=rep(names(nmds_test),each=202),
+                              nmds1=c(fortify(nmds_test$com_prev_0_relab_0)$NMDS1[1:202],
+                                      fortify(nmds_test$com_prev_10_relab_0)$NMDS1[1:202],
+                                      fortify(nmds_test$com_prev_20_relab_0)$NMDS1[1:202],
+                                      fortify(nmds_test$com_prev_31_relab_0)$NMDS1[1:202],
+                                      fortify(nmds_test$com_prev_41_relab_0)$NMDS1[1:202]),
+                              nmds2=c(fortify(nmds_test$com_prev_0_relab_0)$NMDS2[1:202],
+                                      fortify(nmds_test$com_prev_10_relab_0)$NMDS2[1:202],
+                                      fortify(nmds_test$com_prev_20_relab_0)$NMDS2[1:202],
+                                      fortify(nmds_test$com_prev_31_relab_0)$NMDS2[1:202],
+                                      fortify(nmds_test$com_prev_41_relab_0)$NMDS2[1:202])
+                              )
+
+
+site_coord_nmds %>%
+    group_by(sample,data_set)%>%
+    mutate(dis_2_centro=sqrt(nmds1^2+nmds2^2))%>%
+    pivot_wider(id_cols = sample,
+                names_from = data_set,
+                values_from = dis_2_centro)%>%
+    mutate(delta_0_10=abs(com_prev_0_relab_0-com_prev_10_relab_0),
+           delta_10_20=abs(com_prev_10_relab_0-com_prev_20_relab_0),
+           delta_20_31=abs(com_prev_20_relab_0-com_prev_31_relab_0),
+           delta_31_41=abs(com_prev_31_relab_0-com_prev_41_relab_0))%>%
+    pivot_longer(cols=(which(grepl("delta",colnames(.)))),
+                 names_to = "evaluated_diff",
+                 values_to = "values")%>%
+    ggplot(aes(x=evaluated_diff,
+               y=values))+
+    geom_boxplot(fill="darkorange")+
+    theme_classic2()+
+    ggtitle("Effect of filtering on site NMDS distance to origin")+
+    ylab("Distance to origin absolute differences")+
+site_coord_nmds %>%
+    group_by(sample,data_set)%>%
+    mutate(dis_2_centro=sqrt(nmds1^2-(sum(nmds1)/202)^2+nmds2^2-(sum(nmds2)/202)^2))%>%
+    pivot_wider(id_cols = sample,
+                names_from = data_set,
+                values_from = dis_2_centro)%>%
+    mutate(delta_0_10=abs(com_prev_0_relab_0-com_prev_10_relab_0),
+           delta_10_20=abs(com_prev_10_relab_0-com_prev_20_relab_0),
+           delta_20_31=abs(com_prev_20_relab_0-com_prev_31_relab_0),
+           delta_31_41=abs(com_prev_31_relab_0-com_prev_41_relab_0))%>%
+    pivot_longer(cols=(which(grepl("delta",colnames(.)))),
+                 names_to = "evaluated_diff",
+                 values_to = "values")%>%
+    ggplot(aes(x=evaluated_diff,
+               y=values))+
+    geom_boxplot(fill="cornflowerblue")+
+    theme_classic2()+
+    ggtitle("Effect of filtering on site NMDS distance to centroid")+
+    ylab("Distance to centroid absolute differences")
+```
+
+```{r}
+data.frame(RVs=c(FactoMineR::coeffRV(fortify(nmds_test$com_prev_0_relab_0)[1:202,3:4],fortify(nmds_test$com_prev_10_relab_0)[1:202,3:4])$rv,
+FactoMineR::coeffRV(fortify(nmds_test$com_prev_0_relab_0)[1:202,3:4],fortify(nmds_test$com_prev_20_relab_0)[1:202,3:4])$rv,
+FactoMineR::coeffRV(fortify(nmds_test$com_prev_0_relab_0)[1:202,3:4],fortify(nmds_test$com_prev_31_relab_0)[1:202,3:4])$rv,
+FactoMineR::coeffRV(fortify(nmds_test$com_prev_0_relab_0)[1:202,3:4],fortify(nmds_test$com_prev_41_relab_0)[1:202,3:4])$rv),
+x=1:4)%>%
+    ggplot()+
+    geom_segment(aes(x=x,y=0,xend=x,yend=RVs),lineend = "square",linewidth=10,color="coral")+
+    theme_classic2()+
+    ylab("RVs")+
+    xlab("Diff from original dataset")
+```
+
+
+
+## plot pairwise betadiversity
+
+```{r}
+store_dist <- NULL
+for(i in 1:length(com_matrices_list)){
+    dist_tmp <- hillR::hill_taxa_parti_pairwise(com_matrices_list[[i]])
+    dist_tmp$filt <- names(com_matrices_list)[i]
+    store_dist <- rbind(store_dist,dist_tmp)
+}
+
+store_dist%>%
+    ggplot(aes(x=filt,y=TD_beta))+
+    geom_boxplot()+
+    theme_classic2()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## agreggate @genus level
+
+```{r}
+phylos_16s <- meco2phyloseq(meco_16s)
+phylo_aggclass_16s <- phyloseq::tax_glom(phylos_16s,taxrank = "Class_conf_rdp")
+meco_16s_aggclass <- phyloseq2meco(phylo_aggclass_16s)
+```
+
+
+```{r}
+com_matrices_list <- NULL
+for(i in prevalence_nsites){
+    matrix_tmp <- t(meco_16s_aggclass$otu_table)   
+    
+    matrix_tmp <- matrix_tmp[,which(colSums(matrix_tmp!=0)>i)]
+    for(j in relab_thrshld){
+        matrix_tmp <- matrix_tmp[,which(colSums(matrix_tmp)/sum(matrix_tmp)>j)]
+        matrix_tmp <- matrix_tmp[rowSums(matrix_tmp)!=0,]
+        com_matrices_list[[paste0("com_prev_",i,"_relab_",j)]] <- matrix_tmp
+    }
+}
+
+
+com_matrices_list <- com_matrices_list[grepl("relab_0$",names(com_matrices_list))]
+
+nmds_test <- NULL
+for(i in 1:length(com_matrices_list)){
+    nmds_test[[names(com_matrices_list[i])]] <- fortify(metaMDS(com_matrices_list[[i]],
+                        distance = "horn"))
+    
+}
+
+plot_list <- NULL
+for(i in 1:length(nmds_test)){
+    data_tmp <- filter(nmds_test[[i]],score=="sites")
+    data_tmp %<>% mutate(sample=gsub("[A-Z]|-|(?=_).*","",label,perl = T))
+    data_tmp$country <- meco_16s$sample_table$Country
+    plot_list[[names(nmds_test)[i]]]<- data_tmp %>%
+        ggplot(aes(x=NMDS1,y=NMDS2,color=country))+
+        geom_point()+
+        theme_classic2()+
+        ggtitle(paste0(names(nmds_test)[i],": ",nrow(nmds_test[[i]])-207," ASVs"))
+}
+yikes2<- (plot_list$com_prev_0_relab_0+plot_list$com_prev_10_relab_0)/(plot_list$com_prev_20_relab_0+plot_list$com_prev_31_relab_0)/(plot_list$com_prev_41_relab_0+plot_spacer())+plot_layout(guides="collect")
+```
+
