@@ -68,3 +68,54 @@ pcoa18s <- ggplot(df_ordi_18s,aes(x=dim1,y=dim2,color=country))+
     geom_hline(yintercept=0)+
     ggtitle("MAPP_18s")+
     theme(plot.title = element_text(face="bold"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+hierarchy_path_kegg <- path_kegg_pi3[,c(1,3,4)] %>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")
+
+# 
+# maincol <- RColorBrewer::brewer.pal(7,'Dark2')
+# color_frame <- data.frame(c1=unique(hierarchy_path_kegg$c1),
+#                           color_c1=maincol)
+# 
+# hierarchy_path_kegg %<>%
+#     left_join(color_frame)
+# 
+# hierarchy_path_kegg%>%
+#     arrange(c1,c2,c3,c4)%>%
+#     ggplot()+
+#     geom_rect(aes(ymin = cumsum(observation_sum)-observation_sum,
+#                   ymax = cumsum(observation_sum),
+#                   xmin=0,
+#                   xmax=.5),
+#                   fill=arrange(hierarchy_path_kegg,c1)$color_c1)+
+#     geom_rect(aes(ymin = cumsum(observation_sum)-observation_sum,
+#                   ymax = cumsum(observation_sum),
+#                   xmin=.75,
+#                   xmax=1),
+#                   fill=arrange(hierarchy_path_kegg,c1)$color_c1)+
+#     geom_rect(aes(ymin = cumsum(observation_sum)-observation_sum,
+#                   ymax = cumsum(observation_sum),
+#                   xmin=1.25,
+#                   xmax=1.5),
+#                   fill=arrange(hierarchy_path_kegg,c1)$color_c1)+
+#     geom_rect(aes(ymin = cumsum(observation_sum)-observation_sum,
+#                   ymax = cumsum(observation_sum),
+#                   xmin=1.75,
+#                   xmax=2),
+#                   fill=arrange(hierarchy_path_kegg,c1)$color_c1)+
+#     coord_polar(theta='y')+
+#     theme_void()
