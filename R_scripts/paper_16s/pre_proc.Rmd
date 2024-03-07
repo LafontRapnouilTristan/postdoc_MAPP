@@ -998,7 +998,39 @@ pi_1 %>%
     summarise(sum_seq=sum(`Nb sequences`))/sum(pi_1$`Nb sequences`) # Keep 98% of sequences
 ```
 
-I dont have much confidence in these OTUs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out.
+I don't have much confidence in these OTUs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out.
+
+```{r}
+asvs_picrust <- pi_1 %>%
+         filter(`%cov`>80&`%id`>80)%>%select(`#ASV`)
+asvs_picrust <- asvs_picrust$`#ASV`
+```
+
+
+```{r}
+meco_16s_picrust2 <- clone(meco_16s)
+
+meco_16s_picrust2$otu_table %<>% filter(rownames(.)%in%asvs_picrust)
+meco_16s_picrust2$tidy_dataset()
+```
+
+```{r}
+ab_trans_meco_16s_picrust2 <- trans_abund$new(meco_16s_picrust2,taxrank = "Order",ntaxa = 8)
+order_relab_16s_picrust2 <- ab_trans_meco_16s_picrust2$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)+
+    ggtitle("MAPP 16s")+
+    theme(plot.title = element_text(face='bold'))
+```
+
+It changes a bit my 8 dominant taxa
+
+```{r}
+pi_2 <-  read_delim("../../ressource/Picrust2/Galaxy95-[FROGSFUNC_1_placeseqs_and_copynumbers__frogsfunc_marker.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+```
+
+
 
 ## Kegg
 ```{r}
@@ -1007,6 +1039,10 @@ kegg_pi <- read_delim("../../ressource/Picrust2/Galaxy103-[FROGSFUNC_2_functions
                             trim_ws = TRUE)
 
 kegg_pi2 <- read_delim("../../ressource/Picrust2/Galaxy109-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_KO.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+
+kegg_pi3 <- read_delim("../../ressource/Picrust2/Galaxy99-[FROGSFUNC_2_functions__frogsfunc_functions_marker_norm.tsv].tsv", # read the tsv file
                             delim = "\t", escape_double = FALSE, 
                             trim_ws = TRUE)
 ```
