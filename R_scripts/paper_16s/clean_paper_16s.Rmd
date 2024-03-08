@@ -1,0 +1,116 @@
+# Intro
+
+The aim of this paper is to investigate microbial communities from northern Peatlands by mean of 16s Metabarcoding.
+This investigation is both Taxonomic and Functional.
+
+For about 200 hundred samples from the northern hemisphere we have:
+
+- *Communities info*:  
+    * Metabarcoding (16s - bacteria/archae)  
+    * Bacteria and photoautotrophs abundances (cytometry)  
+    * Enzyme activity (C, N and P cycles; 4 enzymes)  
+- *Site bioclimatic data*:  
+    * Coordinates  
+    * Google Earth Engine (GEE) data  
+    
+
+## Metabarcoding
+
+Raw sequencing output (ILLUMINA) were uploaded to Galaxy Toulouse server to be processed using FROGS 4.1 bioinformatic pipeline available on the platform.
+
+### FROGS pipeline
+
+#### I - Preprocess
+
+**Sequencer**: ILLUMINA  
+**Input type**: .TAR archive  
+**File**: .TAR archive with \*R1.fastq.gz and \*R2.fastq.gz for each sample  
+**Merged reads**: NO  
+*Read 1 &2 size*: 250  
+**Mismatch rate**: 0.1  
+**Merge software**: Vsearch  
+**Keep unmerged**: NO  
+**Amplicon size**: min 200 - max 490  
+**Primers**: YES  
+**5'**: Forward primer sequence (GTGYCAGCMGCCGCGGT)  
+**3'**: Reversed & complemented (ACTYAAAKGAATTGRCGGGG) (online: https://reverse-complement.com/)  
+
+#### II - Clustering Swarm
+
+With fastidious method & d=1 : effectively ASVs
+
+**Aggregation distance**: 1  
+**Refine clustering**: YES
+
+
+#### III - Remove chimera
+
+
+#### IV - Cluster Filtering
+
+**Minimum prevalence**: NA  
+**Minimum proportion/count**: 2  -- Remove rare (proportion) or OTUs with less than X sequences (X=2 => remove singletons)  
+**Search contaminant**: On server PhiX database
+
+#### V - Taxonomic Affiliation
+
+Chose ref db (SILVA or µgreen)
+Ask for RDP classifier too!
+
+
+**Blast metrics**:
+
+- **Query Coverage**: Percent of the query sequence length that is included in alignments against the sequence match.
+
+- **E-value**: Indicates the number of hits or alignments that are expected to be seen by random chance with the same score or better. 
+The lower the E-value, the more significant the alignment (the closer to 0, the better).
+E-value is the default metric used to sort the Descriptions table. 
+
+- **Percent Identity**: Percent of nucleotides or amino acids that are identical between the aligned query and database sequences. 
+A query sequence can share low percent identity with a sequence and still be a significant hit. 
+It is essential to take the E-value into account and look for similarity between conserved regions (this will be more evident at the amino acid level).
+
+
+#### VI - Postprocess
+
+NOT filtering assignation within FROGS
+Produce assignation stats
+Convert .BIOM to .TSV and give a sequence file to keep sequence info!! (More universal format even tho .BIOM is loadable into R for further analysis)
+
+
+### FROGS Picrust2
+
+Picrust2 is a tool to infer from 16s communities the numbers of copy of functional genes and associated pathways allowing a functional characterization of your communities.
+For computational reasons and because they are likely to be filtered out in our analysis we removed singletons for this step.
+
+
+#### I - Place and count copies
+
+This step aims at placing our OTUs sequences onto a reference tree within Picrust2 as well as estimating the number of 16s RNA genes copy present in our ASVs' genomes.
+
+**Taxonomy marker**: 16s  
+**Placement tool**: epa-ng  
+**Minimum alignment length**: 0.8  
+
+ASVs that have less than 80% of their sequence aligned with reference sequences are discarded.
+
+#### II - Predict functions
+
+
+- Functional abundances based solely on the sequences of marker genes with PICRUSt2. The available marker genes are 16S, ITS and 18S.
+- Functions, weighted by the relative abundance of ASVs in the community. Inferring the metagenomes of the communities with PICRUSt2.
+
+
+
+#### III - Predict Pathways
+
+
+
+- It runs hidden-state prediction (hsp) to predict function abundances with castor-R of each ASVs placed in the PICRUSt2 reference phylogenetic tree (FROGSFUNC_1_placeseqs_copynumber outputs).
+
+- The read depth per ASV is divided by the predicted marker (16S/ITS/18S) copy numbers. 
+    This is performed to help control for variation in marker copy numbers across organisms, which can result in interpretation issues.
+    For instance, imagine an organism with five identical copies of the 16S gene that is at the same absolute abundance as an organism with one 16S gene. 
+    The ASV corresponding to the first organism would erroneously be inferred to be at higher relative abundance simply because this organism had more copies of the 16S gene.
+
+- The ASV read depths per sample (after normalizing by marker (16S/ITS/18S) copy number) are multiplied by the predicted function copy numbers per ASV
