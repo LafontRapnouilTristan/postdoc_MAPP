@@ -114,3 +114,1158 @@ ASVs that have less than 80% of their sequence aligned with reference sequences 
     The ASV corresponding to the first organism would erroneously be inferred to be at higher relative abundance simply because this organism had more copies of the 16S gene.
 
 - The ASV read depths per sample (after normalizing by marker (16S/ITS/18S) copy number) are multiplied by the predicted function copy numbers per ASV
+
+# Load Packages
+
+```{r}
+EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplot2","reshape2","patchwork","ggpubr","tidyr","forcats","phyloseq","cowplot","readxl","microeco","file2meco","RColorBrewer","vegan","sf","rnaturalearth","rnaturalearthdata"))
+```
+
+# MetabaR Processing
+
+## prepare metabarlist
+
+```{r}
+data_temp <- read_delim(file = "../../data/paper_16s/tsv_com_with_singletons.tsv", # read the tsv file
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE)
+
+reads_frame <- t(as.matrix(data_temp[,colnames(data_temp)[grepl("L001",colnames(data_temp))]])) # extract site per otus reads count matrix
+colnames(reads_frame) <- data_temp$observation_name #set colnames as cluster ID (otu 'names')
+
+
+motus_frame <- data_temp[,colnames(data_temp)[!grepl("L001",colnames(data_temp))]] # extract motu information (taxonomy, counts etc)
+
+
+motus_frame %<>% dplyr::rename(sequence=seed_sequence) # rename seed_sequence columns to sequence
+motus_frame %<>% mutate(rdp_tax_and_bootstrap=gsub("\\(|\\)|;$","",rdp_tax_and_bootstrap,perl=T))
+
+motus_frame %<>% mutate(blast_taxonomy=ifelse(blast_taxonomy=="no data","k__;p__;c__;o__;f__;g__;s__",blast_taxonomy))
+motus_frame %<>% separate(rdp_tax_and_bootstrap,
+                          into=c("Kingdom","boots_Kingdom",
+                                 "Phylum","boots_Phylum",
+                                 "Class","boots_Class",
+                                 "Order","boots_Order",
+                                 "Family","boots_Family",
+                                 "Genus","boots_Genus",
+                                 "Species","boots_Species"),
+                          sep=";",
+                          remove = F)%>%
+    separate(blast_taxonomy,
+             into=c("Kingdom_blast",
+                    "Phylum_blast",
+                    "Class_blast",
+                    "Order_blast",
+                    "Family_blast",
+                    "Genus_blast",
+                    "Species_blast"),
+             sep=";",
+             remove = F)%>%
+    mutate(across(.cols=which(grepl("boots_",colnames(.))),.fns=as.numeric))
+
+rownames(motus_frame) <- motus_frame$observation_name # use OTU names as rownames of the df
+pcr_frame <- data.frame(sample_id=colnames(data_temp)[grep("L001",colnames(data_temp))], type="sample",control_type=NA) # set pcr frame as required by metabaR
+rownames(pcr_frame) <- pcr_frame$sample_id # set rownames as site/sample id
+
+sample_frame <- data.frame(sample_id=colnames(data_temp)[grep("L001",colnames(data_temp))]) # create sample frame
+rownames(sample_frame) <- sample_frame$sample_id # set rownames as site/sample id
+
+metab_list <- metabarlist_generator(reads = reads_frame, # create metabarlist
+                                    motus = motus_frame,
+                                    pcrs = pcr_frame,
+                                    samples = sample_frame)
+
+rm(data_temp,motus_frame,pcr_frame,reads_frame,sample_frame) # remove temporary files
+```
+
+
+
+## Start MetabaR processing
+
+
+### Evaluate PCRs on sequencing depths
+
+Plot number of OTUs and reads per PCRs as well as their correlation.
+Correlation between reads and richness are problematic as they might indicate insufficient sequencing depth.
+```{r}
+data_temp <- metab_list# get one metabarlist
+
+# Compute the number of reads per pcr
+data_temp$pcrs$nb_reads <- rowSums(data_temp$reads)
+
+# Compute the number of motus per pcr
+data_temp$pcrs$nb_motus <- rowSums(data_temp$reads>0)
+metab_list <- data_temp
+check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "nb_reads", "nb_motus")])
+
+p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) + 
+    geom_boxplot() + 
+    theme_bw() + 
+    geom_jitter(alpha=0.2) + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey") +
+    facet_wrap(~variable, scales = "free_y") +
+    ggtitle("16s")+ 
+    theme(axis.text.x = element_text(angle=45, h=1),
+          plot.title = element_text(face="bold"))
+
+p2 <-  ggplot(data_temp$pcrs, aes(x=nb_reads, y=nb_motus, color = control_type)) + 
+    geom_point() + 
+    theme_bw() + 
+    scale_y_log10() + 
+    scale_x_log10() + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey")
+
+diagplot <- p1 + p2 + plot_layout(guides="collect") # sample 124 low reads?
+rm(p1,p2,data_temp,check1,data)
+diagplot
+```
+
+All samples but one have more than 10000 reads. 
+Remove this outlier
+
+Flag pcrs according to seq depths
+```{r}
+data_temp <- metab_list
+
+# Tag as ok pcrs with more than 10 000 reads
+data_temp$pcrs$seqdepth_ok <- ifelse(data_temp$pcrs$nb_reads < 10e3, F, T)
+
+# Overwrite
+metab_list <- data_temp 
+
+# proportion of innaceptable pcrs seq depth, control excluded!!
+seq_depth_tab<- table(data_temp$pcrs$seqdepth_ok[data_temp$pcrs$type=="sample"]) /
+    nrow(data_temp$pcrs[data_temp$pcrs$type=="sample",])
+print(seq_depth_tab)
+rm(data_temp)
+```
+
+
+### Remove non target OTUs
+
+Tag non target OTUs
+```{r}
+non_target_prop <- NULL
+non_targetconta_prop <- NULL
+
+data_temp <- metab_list
+
+#Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
+data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)&!grepl("Chloroplast",data_temp$motus$Order)&!grepl("Mitochondria",data_temp$motus$Family)  # MITO and rickettsiales
+
+# Proportion of each of these over total number of MOTUs
+non_target_prop <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
+
+# Intersection with extraction contaminant flags (not contaminant = T)
+non_target_prop <- table(data_temp$motus$target_taxon)
+print(non_target_prop)
+
+# Overwrite
+metab_list <- data_temp
+
+```
+
+
+### Filter and format according to Assignment quality
+
+
+Tag as poorly assigned Sequences with no assignment at the kingdom lvl (ie with RDP bootstrap values <70: boots_thshld choosen earlier) 
+```{r}
+boots_thshld <- 0.7 # define a RDP classifier bootstrap value under which we consider affiliation uncertain
+
+# test <- NULL
+data_temp <- metab_list
+melty <- melt(data_temp$motus, id = c(colnames(data_temp$motus)[which(grepl("boots_",colnames(data_temp$motus))==F)] ))
+melty$variable <- gsub("boots_","",melty$variable)
+melty$variable <- as.factor(melty$variable)
+
+melty$variable <- fct_relevel(melty$variable,"Kingdom","Phylum","Class","Order","Family","Genus","Species")
+
+
+plot_tax_boots <-  ggplot(melty,aes(x=variable,y=as.numeric(value))) +
+    geom_boxplot(aes(fill=variable))+
+    theme_bw()+
+    ggtitle("16s")+
+    labs(y="conf %")+
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          axis.title.x = element_blank())+
+    theme(legend.position = "n",
+          plot.title = element_text(face = "bold"))
+
+# Create a "confident taxonomy" (boots >= boots_thshld)
+colnames_tmp <- c(gsub("boots_","",grep("boots_",colnames(data_temp$motus), value = T)))
+
+for(j in 1:length(colnames_tmp)){
+    
+    col <- match(colnames_tmp[j],colnames(data_temp$motus))
+    a <- data_temp$motus[,c(col,col+1)]
+    tax_lvl <- paste0(tolower(substr(names(a)[2],7,7)),"__")
+    conf <- a %>% mutate(col_temp=ifelse(.[[2]]<boots_thshld,gsub(".*",tax_lvl,.[[1]],perl=T),.[[1]]))
+    data_temp$motus <- cbind(data_temp$motus,conf[,3])
+    colnames(data_temp$motus)[ncol(data_temp$motus)]<- paste0(colnames_tmp[j],"_conf_rdp")
+}
+
+# Tag sequences not assigned below Kingdom
+data_temp$motus %<>% mutate(good_assign = ifelse(Phylum_conf_rdp=="p__",F,T))
+
+# Overwrite
+metab_list <- data_temp
+rm(data_temp,melty)
+
+plot_tax_boots
+```
+
+### Display noise in OTUs
+
+summarize noise in motus
+```{r}
+# color_scale (create a common scale across datasets)
+a <- unlist(combn(c("untargeted_taxon","poorly_assigned"),1,simplify = F))
+b <- c("poorly_assigned|untargeted_taxon")
+myColors <- RColorBrewer::brewer.pal(8,"Set1")
+names(myColors) <- levels(as.factor(c(a,b,"not_artefactual")))
+colScale <- scale_fill_manual(name = "grp",values = myColors, drop=F)
+
+data_temp <- metab_list
+
+# Create a table of MOTUs quality criteria 
+# noise is identified as FALSE in data_temp, the "!" transforms it to TRUE 
+motus.qual <- !data_temp$motus[,c("target_taxon","good_assign")] #not_degraded 
+colnames(motus.qual) <- c("untargeted_taxon","poorly_assigned") #degraded_seq  
+
+motu_noise_tab <- NULL
+# Proportion of MOTUs potentially artifactual (TRUE) based on the criteria used
+motu_noise_tab$motus <- prop.table(table(apply(motus.qual, 1, sum) > 0))
+
+# Corresponding proportion of artifactual reads (TRUE)
+motu_noise_tab$reads <- prop.table(xtabs(data_temp$motus$observation_sum~apply(motus.qual, 1, sum) > 0))
+
+# Proportion of MOTUs and reads potentially artifactual for each criterion
+apply(motus.qual, 2, sum) / nrow(motus.qual)
+apply(motus.qual, 2, function(x) sum(data_temp$motus$observation_sum[x])/sum(data_temp$motus$observation_sum))
+
+tmp.motus <- 
+    apply(sapply(1:ncol(motus.qual), function(x) {
+        ifelse(motus.qual[,x]==T, colnames(motus.qual)[x], NA)}), 1, function(x) {
+            paste(sort(unique(x)), collapse = "|")
+        })
+tmp.motus <- as.data.frame(gsub("^$", "not_artefactual", tmp.motus))
+colnames(tmp.motus) <-  "artefact_type"
+tmp.motus %<>% mutate(artefact_type=as.factor(artefact_type)  )
+
+plot_noise_motu <- ggplot(tmp.motus, aes(x=1, fill=artefact_type)) +
+    geom_bar() +  xlim(0, 2) +
+    labs(fill="Artifact type") + 
+    coord_polar(theta="y") + theme_void() + 
+    scale_fill_manual(name = "grp",values = myColors, drop=F) + 
+    theme(legend.direction = "vertical") + 
+    ggtitle("16s - MOTUS noise")+
+    theme(plot.title = element_text(face="bold"))
+
+rm(tmp.motus,motus.qual,data_temp,myColors,colScale,a,b)
+
+plot_noise_motu
+```
+
+
+
+
+### Filter 
+
+
+```{r}
+# Use tag-jump corrected metabarlist with the threshold identified above
+tmp <- metab_list
+
+# Subset on MOTUs: we keep motus that are defined as TRUE following the 
+# criteria below (sum of x TRUE is equal to x with the rowSums function)
+row.names(tmp$motus) <- colnames(tmp$reads)
+
+tmp <- subset_metabarlist(tmp, "motus", 
+                          indices = rowSums(tmp$motus[,c("good_assign", "target_taxon")]) == 2)# ?poorly assigned?
+
+# Subset on pcrs and keep only samples 
+data_temp <- subset_metabarlist(tmp, "pcrs", 
+                                indices = tmp$pcrs[,c("seqdepth_ok")] == TRUE & #, "replicating_pcr" 
+                                    tmp$pcrs$type == "sample")
+
+#update counts and reads.    
+data_temp$motus$counts = colSums(data_temp$reads)
+data_temp$pcrs$reads_post = rowSums(data_temp$reads)
+data_temp$pcrs$motus_post = rowSums(ifelse(data_temp$reads>0, T, F))
+
+check <- melt(data_temp$pcrs[,c("nb_reads", "reads_post", 
+                                "nb_motus", "motus_post")])
+check$type <- ifelse(grepl("motus", check$variable), "richness", "abundance")
+
+summary_list <- summary_metabarlist(data_temp)
+
+if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty motus present"))}
+if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty pcrs present"))}
+
+sumpipeline_plots <- ggplot(data = check, aes(x = variable, y = value)) +
+    geom_boxplot( color = "darkgrey") +
+    geom_jitter(alpha=0.1, color = "darkgrey") +
+    theme_bw() +
+    facet_wrap(~type, scales = "free", ncol = 5) +
+    theme(axis.text.x = element_text(angle=45, h=1),
+          axis.title = element_blank()) +
+    ggtitle("Effect of cleaning")
+
+cleaned_metablist <- data_temp
+rm(tmp,data_temp,check)
+sumpipeline_plots
+```
+
+
+
+### Check effect of filter on reads and richness
+
+
+```{r}
+# Using the nb_reads and nb_motus defined previously in the data_temp$pcrs table
+data_temp <- cleaned_metablist
+
+check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "reads_post", "motus_post")])
+
+p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) + 
+    geom_boxplot() + 
+    theme_bw() + 
+    geom_jitter(alpha=0.2) + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey") +
+    facet_wrap(~variable, scales = "free_y") +
+    ggtitle("")+ 
+    theme(axis.text.x = element_text(angle=45, h=1),
+          plot.title = element_text(face="bold"))
+
+p2 <-  ggplot(data_temp$pcrs, aes(x=reads_post, y=motus_post, color = control_type)) + 
+    geom_point() + 
+    theme_bw() + 
+    scale_y_log10() + 
+    scale_x_log10() + 
+    scale_color_manual(values = c("brown", "red", "cyan4","pink"), na.value = "darkgrey")+
+    geom_smooth(method="lm",color="darkorange")
+
+diag_plots_post <-  p1 + p2 + plot_layout(guides="collect")
+rm(p1,p2,data_temp,check1,data)
+
+diag_plots_post
+```
+
+OK we have strong correlation between richness and reads within samples (deseq2 or rarefaction?)
+Will depend on questions (test link between bioclimatic/geographical variables and the number of reads)
+Differential abundance implementation in this models.
+
+## Data wrangling
+
+### Transform to physeq lists
+
+
+```{r}
+data_temp_cleaned <- cleaned_metablist
+data_temp <- metab_list
+
+rownames(data_temp$motus) <- colnames(data_temp$reads)
+# Get row data only for samples
+tmp <- subset_metabarlist(data_temp, table = "pcrs",
+                          indices = data_temp$pcrs$type == "sample")
+
+tmpcl <- subset_metabarlist(data_temp_cleaned, table = "pcrs",
+                            indices = data_temp_cleaned$pcrs$type == "sample")
+
+# Format for phyloseq
+
+otumat <- as.matrix(tmp$reads)
+taxmat <- as.matrix(tmp$motus)
+sammat <- left_join(tmp$samples,tmp$pcrs)
+OTU <- otu_table(otumat, taxa_are_rows = F)
+TAX <- tax_table(taxmat)
+SAM <- sample_data(sammat)
+rownames(SAM) <- SAM$sample_id
+physeq <- phyloseq(OTU,TAX,SAM)
+physeq
+
+otumatcl <- as.matrix(tmpcl$reads)
+taxmatcl <- as.matrix(tmpcl$motus)
+sammatcl <- left_join(tmpcl$samples,tmpcl$pcrs)
+OTUcl <- otu_table(otumatcl, taxa_are_rows = F)
+TAXcl <- tax_table(taxmatcl)
+SAMcl <- sample_data(sammatcl)
+rownames(SAMcl) <- SAMcl$sample_id
+physeqcl <- phyloseq(OTUcl,TAXcl,SAMcl)
+
+rm(data_temp_cleaned,data_temp,tmp,tmpcl,otumat,taxmat,sammat,OTU,TAX,SAM,otumatcl,taxmatcl,sammatcl,OTUcl,TAXcl,SAMcl)
+```
+
+
+remove unwanted samples (Vincent treatments and chile sample)
+
+
+```{r}
+data_temp <- physeqcl
+data_temp <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241|042-047|047-042|246b",data_temp@sam_data$sample_id))
+data_temp@sam_data$reads_post <- rowSums(data_temp@otu_table)
+
+data_temp@sam_data$reads_post = rowSums(data_temp@otu_table) # reads per samples
+data_temp@sam_data$motus_post = rowSums(ifelse(data_temp@otu_table>0, T, F)) # motus per samples
+physeqcl <- data_temp
+```
+
+
+### Transform to microeco
+
+Load site metadata
+```{r}
+site_coordinates <- read.csv("../../ressource/Site_edaphic_data/site_coord_MAPP.csv")  # get site coordinates
+site_coordinates %<>% 
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>% # reformat 1 into 001 and 64 to 064 etc...
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
+site_coordinates %<>% 
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample)) # fix 87a and 87b to 087a and 087b
+```
+
+
+```{r}
+meco_16s <- phyloseq2meco(physeqcl)
+
+meco_16s$sample_table %<>% mutate(Sample = gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+
+# check for diff between sites coordinates obtained form vicent and samples remaining in the final analysis
+setdiff(site_coordinates$Sample,meco_16s$sample_table$Sample) # we willingly removed 231-7|239|240|241 / 042 and 047 are mixed up what about : 115/124/199/200/201/205/206/208/209/227/252/253/258
+
+# add coordinates to the three datasets
+meco_16s$sample_table %<>% left_join(site_coordinates)
+
+# reset rownames
+rownames(meco_16s$sample_table) <- meco_16s$sample_table$sample_id
+
+meco_16s$tidy_dataset() #tidy datasets
+
+# Compute the number of reads per pcr
+meco_16s$sample_table$nb_reads <- colSums(meco_16s$otu_table)
+
+# Compute the number of motus per pcr
+meco_16s$sample_table$nb_reads <- colSums(meco_16s$otu_table>0)
+
+gc()
+```
+
+# Explore 16s communities
+
+Samples 256 and 87 are duplicated (a and b). 
+256b and 87a are retained because of their higher sequencing depth allowing better characterization of their communities.
+```{r}
+colSums(meco_16s$otu_table[,grepl("256",colnames(meco_16s$otu_table))]);colSums(meco_16s$otu_table[,grepl("87",colnames(meco_16s$otu_table))])
+```
+
+Moreover we lack geographical info about samples 116, 119 and 166 and samples 042 and 047 have been mixed and can't be exploited.
+
+```{r}
+meco_16s$otu_table <- meco_16s$otu_table[,!grepl("256a|87b|116|119|166",colnames(meco_16s$otu_table))] # remove these samples
+meco_16s$filter_pollution(taxa = c("mitochondria", "chloroplast")) # remove chloroplast and mitochondria if some passed the previous filter
+meco_16s$tidy_dataset() # tidy the microeco object
+```
+
+## Investigate singletons
+
+Visualize number of singletons
+```{r}
+data_temp <- meco_16s # get data
+
+n_single_otu <- sum(rowSums(data_temp$otu_table)==1) # number of single otus (those that are present exactly once across all sites)
+n_non_single_otu <- sum(rowSums(data_temp$otu_table)>1) # number of non single otu
+n_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)==1),]) # number of reads from the data set that correspond to OTU singletons (sum of reads on singletons subset)
+n_non_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)>1),]) # same but for non singletons
+df_tmp <- data.frame(otu_val=c(n_single_otu,n_non_single_otu),
+                     read_val=c(n_single_reads,n_non_single_reads),
+                     type=c("n_single","n_non_single"))
+df_tmp %<>% mutate(pct_otus=otu_val/sum(otu_val), # convert to %
+                   pct_reads=read_val/sum(data_temp$otu_table))%>%
+    reshape2::melt()%>%
+    filter(grepl("pct",variable))
+
+singletons <- ggplot(df_tmp,aes(x = variable,y = value, fill=type))+
+    geom_bar(position="stack",stat = "identity")+
+    theme_classic2()+
+    scale_fill_manual(values = c("lightseagreen","mediumvioletred"))+
+    theme(plot.title = element_text(face='bold'))+
+    ylab("% of singletons")+
+    xlab("OTUs vs Reads")+
+    scale_y_continuous(expand = c(0,0))
+
+
+alpha <- colSums(data_temp$otu_table!=0) # sample alpha diversity as the number of non null rows (otus)
+single_otu <-  colSums(filter(data_temp$otu_table,rowSums(data_temp$otu_table)==1)==1) # number of singletons otus within sample as the number of otus restricted to this sample (subset rowsums) and with one read (==1)
+# non_single_otu2 <- colSums(data_temp$otu_table>1)
+non_single_otu <- alpha-single_otu # OTUs that might be singletons within the sample but not the dataset 
+df_tmp <- data.frame(value = c(rbind(single_otu,non_single_otu)),
+                     type=c("n_single","n_non_single"),
+                     sample=rep(1:ncol(data_temp$otu_table),each=2))%>%
+    group_by(sample)%>%
+    mutate(val_pct= value/sum(value))
+
+alpha_plot <- ggplot(df_tmp,aes(x=sample,y=value,fill=type))+
+    geom_bar(stat="identity",position = "stack",width = 1)+
+    theme_classic2()+
+    ggtitle("16s singletons repartition")+
+    theme(plot.title = element_text(face='bold'))+
+    scale_y_continuous(expand = c(0,0))+
+    scale_x_continuous(expand = c(0,0))+
+    xlab("samples")+
+    ylab("Richness")+
+    scale_fill_manual(values=c("lightseagreen","mediumvioletred"))
+
+alpha_plot_pct <- ggplot(df_tmp,aes(x=sample,y=val_pct,fill=type))+
+    geom_bar(stat="identity",position = "stack",width = 1)+
+    theme_classic2()+
+    theme(plot.title = element_text(face='bold'))+
+    scale_y_continuous(expand = c(0,0))+
+    scale_x_continuous(expand = c(0,0))+
+    xlab("samples")+
+    ylab("Richness")+
+    scale_fill_manual(values=c("lightseagreen","mediumvioletred"))
+
+
+meco_16s_singl <- clone(meco_16s)
+meco_16s_singl$otu_table %<>% filter(rowSums(.)==1)
+meco_16s_singl$tidy_dataset()
+meco_16s_singl$sample_table %<>% mutate(dumb_group = "sample")
+meco_16s_singl$cal_abund()
+meco_16s_singl <- trans_abund$new(meco_16s_singl,taxrank = "Order",ntaxa = 8,groupmean = "dumb_group")
+    
+plot_data <- meco_16s_singl$data_abund
+use_taxanames <- c(meco_16s_singl$data_taxanames,"unidentified")
+plot_data$Taxonomy[!plot_data$Taxonomy %in% use_taxanames] <- "Others"
+plot_data %<>% 
+    dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+    dplyr::summarise(Abundance = sum(Abundance)) %>% 
+    as.data.frame(stringsAsFactors = FALSE)
+plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others", "unidentified"))
+plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
+donut_comp <- ggdonutchart(plot_data,"Abundance",
+             fill="Taxonomy",
+             label = "label",
+             color = "white",
+             palette = c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"))+
+    theme(legend.position = "right")
+
+
+alpha_plot + theme(legend.position = "n") + alpha_plot_pct + singletons + theme(legend.position = "n") + donut_comp  + plot_layout(widths = c(1, 1))
+```
+
+We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads.
+Can this be interpretated as high endemism in peatlands bacteria??
+And loads of rare strains? 
+We are working at low resolution with SWARM clustering, increasing singletons.
+We use the 'fastidious' option that should prevent to many singletons if they are close https://peerj.com/articles/1420/
+Is it legit to have that many singletons?
+
+
+Can't remove that many OTUs,huge effect on alpha div no?
+Tho quite well distributed across samples.
+Should reduce divergence between my samples.
+
+Shall we keep singletons for alpha div and stuff but aggregate at some phylogenetical levels for modeling approaches? 
+Hypothesis that phylogeny retains ecological features but is it true for bacteria? 
+
+
+
+## Alpha-div
+
+re-compute for each samples the sequencing depth and richness
+```{r}
+meco_16s$sample_table %<>%
+    select(sample_id,nb_reads,nb_motus,Sample,Y,X) %>%
+    mutate(nb_reads=colSums(meco_16s$otu_table),
+           nb_motus=colSums(meco_16s$otu_table>0))
+```
+
+```{r}
+distrib_reads_and_motus <- meco_16s$sample_table %>%
+    ggplot(aes(x=nb_reads))+
+    geom_histogram(bins=30,color='darkorange',fill='white')+
+    scale_y_continuous(expand = c(0,0))+
+    theme_classic2()+
+    meco_16s$sample_table %>%
+    ggplot(aes(x=nb_motus))+
+    geom_histogram(bins=30,color='deeppink4',fill='white')+
+    scale_y_continuous(expand = c(0,0))+
+    theme_classic2()
+
+cor_reads_motus <- meco_16s$sample_table %>%
+    ggplot(aes(x=nb_reads, y=nb_motus))+
+    geom_point(color='darkgrey')+
+    scale_y_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)))+
+    scale_x_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)) )+
+    theme_classic2()+
+    geom_smooth(method = 'lm',lty=2,color='darkorange')+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("eq", "R2", "p")))
+
+tab16s <- t(otu_table(file2meco::meco2phyloseq(meco_16s))) # get the community
+class(tab16s) <- "matrix" # change class
+curve16s <- rarecurve(tab16s,step=100) # use vegan rarefaction curves
+names(curve16s) <- rownames(tab16s) # name curves after sample IDs
+
+# Coerce data into "long" form.
+protox <- mapply(FUN = function(x, y) {
+    mydf <- as.data.frame(x)
+    colnames(mydf) <- "value"
+    mydf$samples <- y
+    mydf$subsample <- attr(x, "Subsample")
+    mydf
+}, x = curve16s, y = as.list(names(curve16s)), SIMPLIFY = FALSE)
+
+xy <- do.call(rbind, protox)
+rownames(xy) <- NULL  # pretty
+
+# Plot.
+rare16s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+    theme_classic2() +
+    scale_color_discrete(guide = "none") +  # turn legend on or off
+    geom_line(color = "aquamarine4")+
+    xlab("nb reads")+
+    ylab("OTUs count")
+
+
+distrib_reads_and_motus/(cor_reads_motus+rare16s)+ plot_annotation(title = 'With singletons') & theme(plot.title = element_text(face='bold'))
+```
+
+
+same without singletons
+```{r}
+meco_16s_ns <- clone(meco_16s)
+meco_16s_ns$otu_table %<>% filter(rowSums(meco_16s_ns$otu_table)>1)
+meco_16s_ns$tidy_dataset()
+meco_16s_ns$sample_table %<>%
+    mutate(nb_reads=colSums(meco_16s_ns$otu_table),
+           nb_motus=colSums(meco_16s_ns$otu_table>0))
+```
+
+
+```{r}
+distrib_reads_and_motus_ns <- meco_16s_ns$sample_table %>%
+    ggplot(aes(x=nb_reads))+
+    geom_histogram(bins=30,color='darkorange',fill='white')+
+    scale_y_continuous(expand = c(0,0))+
+    theme_classic2()+
+    meco_16s_ns$sample_table %>%
+    ggplot(aes(x=nb_motus))+
+    geom_histogram(bins=30,color='deeppink4',fill='white')+
+    scale_y_continuous(expand = c(0,0))+
+    theme_classic2()
+
+cor_reads_motus_ns <- meco_16s_ns$sample_table %>%
+    ggplot(aes(x=nb_reads, y=nb_motus))+
+    geom_point(color='darkgrey')+
+    scale_y_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)))+
+    scale_x_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)) )+
+    theme_classic2()+
+    geom_smooth(method = 'lm',lty=2,color='darkorange')+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("eq", "R2", "p")))
+
+tab16s_ns <- t(otu_table(file2meco::meco2phyloseq(meco_16s_ns))) # get the community
+class(tab16s_ns) <- "matrix" # change class
+curve16s_ns <- rarecurve(tab16s_ns,step=100) # use vegan rarefaction curves
+names(curve16s_ns) <- rownames(tab16s_ns) # name curves after sample IDs
+
+# Coerce data into "long" form.
+protox <- mapply(FUN = function(x, y) {
+    mydf <- as.data.frame(x)
+    colnames(mydf) <- "value"
+    mydf$samples <- y
+    mydf$subsample <- attr(x, "Subsample")
+    mydf
+}, x = curve16s_ns, y = as.list(names(curve16s_ns)), SIMPLIFY = FALSE)
+
+xy <- do.call(rbind, protox)
+rownames(xy) <- NULL  # pretty
+
+# Plot.
+rare16s_ns <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+    theme_classic2() +
+    scale_color_discrete(guide = "none") +  # turn legend on or off
+    geom_line(color = "aquamarine4")+
+    xlab("nb reads")+
+    ylab("OTUs count")
+
+distrib_reads_and_motus_ns/(cor_reads_motus_ns+rare16s_ns)+ plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+```
+
+## Composition
+
+donuts plot without singletons fur 16s
+```{r}
+tmp16s <- clone(meco_16s_ns)
+tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+tmp16s$otu_table %<>% filter(rowSums(.)>1)
+tmp16s$tidy_dataset()
+
+tmp16s$cal_abund()
+tmp16s <- trans_abund$new(tmp16s,taxrank = "Order",ntaxa = 8,groupmean = "dumb_group")
+    
+plot_data <- tmp16s$data_abund
+use_taxanames <- tmp16s$data_taxanames
+plot_data$Taxonomy[!plot_data$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+plot_data %<>% 
+    dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+    dplyr::summarise(Abundance = sum(Abundance)) %>% 
+    as.data.frame(stringsAsFactors = FALSE)
+plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
+donut_comp <- ggdonutchart(plot_data,"Abundance",
+             fill="Taxonomy",
+             label = "label",
+             color = "white",
+             palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"))+
+    theme(legend.position = "right")
+
+tmp16s <- clone(meco_16s_ns)
+tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+tmp16s$otu_table %<>% filter(rowSums(.)>1)
+tmp16s$tidy_dataset()
+
+tmp16s <- trans_abund$new(tmp16s,taxrank = "Order",ntaxa = 8)
+
+bar_comp <- tmp16s$plot_bar(others_color = '#666666',color_values = colorRampPalette(brewer.pal(8, "Dark2"))(9), xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)
+donut_comp + bar_comp + guides(fill = guide_legend(reverse = T)) +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+```
+
+```{r}
+ordi16s <- ordinate(file2meco::meco2phyloseq(meco_16s_ns), "NMDS", "horn")
+
+tmp16s <- clone(meco_16s_ns)
+tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+tmp16s$otu_table %<>% filter(rowSums(.)>1)
+tmp16s$tidy_dataset()
+
+tmp16s <- trans_abund$new(tmp16s,taxrank = "Genus",ntaxa = 8)
+
+df_ordi_16s  <- merge(ordi16s$species,meco_16s_ns$tax_table,by = 'row.names')%>%
+    mutate(Genus=ifelse(Genus%in%paste0("g__",tmp16s$data_taxanames),Genus,"Other"))%>%
+    mutate(Genus=gsub('g__','',Genus))%>%
+    mutate(Genus=as.factor(Genus))%>%
+    mutate(Genus=fct_relevel(Genus,c(tmp16s$data_taxanames,"Other")))
+
+ggplot(df_ordi_16s,aes(x=MDS1,y=MDS2,color=Genus,alpha=Genus))+
+    geom_point(shape=16)+
+    theme_classic()+
+    ylab(paste0("NMDS 2"))+
+    xlab(paste0("NMDS 1"))+
+    geom_vline(xintercept=0,lty=2)+
+    geom_hline(yintercept=0,lty=2)+
+    scale_color_manual(values=colorRampPalette(brewer.pal(8, "Dark2"))(9))+
+    scale_alpha_manual(values=c(rep(1,8),.5))
+```
+
+Still some highly suspicious ASVs.
+
+clean environment and save datasets
+```{r}
+
+```
+
+
+# Sites
+
+We collated data from Google Earth Engine (GEE) using sample coordinate provided by our collaborators.
+These data are from different datasets and satellite sources available on  [GEE website](https://developers.google.com/earth-engine/datasets).
+
+Temporal data (Terra Climate, SMAP soil, Vegetation, Productivity) are average over years  and tagged "_lt" for "long-term".
+In addition to these long term data we retrieved monthly data from march (_03) to october (_10) of the sampling year (2021).
+These will be used to produce "short-term" (_st) data with the hypothesis that microbial communities are strongly affected by recent meteorology.
+
+For each variable is given: name - unit - scale - resolution.
+
+
+## Available Data
+
+### Terra Climate
+
+These are monthly weather data.
+Long term : 2011/01/01 to 2021/01/01
+
+With scale being a scaling factor by which to multiply the variable to get the right values.
+
+**aet**: actual evapotranspiration - mm - 0.1 - 4638.3m
+**def**: Climate water deficit - mm - 0.1 - 4638.3m
+**pdsi**: Palmer drought severity index (temperature and precipitation -10 to +10 : dry to wet) - no unit - 0.01 - 4638.3m  
+**pet**: Reference evapotranspiration - mm - 0.1 - 4638.3m  
+**pr**: Precipitation accumulation (@ the end of the month) - mm - no scale - 4638.3m  
+**srad**: Downward surface shortwave radiation - W/m^2 - 0.1 - 4638.3m  
+**swe**: Snow water equivalent - mm - no scale - 4638.3m  
+**tmmn**: Minimum Temperature - °C - 0.1 - 4638.3m  
+**tmmx**: Maximum Temperature - °C - 0.1 - 4638.3m  
+**vap**: Vapor pressure - KPa - 0.001 - 4638.3m  
+**vpd**: Vapor pressure deficit - kPa - 0.01 - 4638.3m  
+**moist**: Soil moisture - mm - 0.1 - 4638.3m  
+
+### SMAP soil
+
+NASA_USDA/HSL/SMAP10KM_soil_moisture
+
+These are monthly soil data.
+Long term : 2016/01/01 to 2021/01/01
+
+**ssm**: Surface soil moisture
+**susm**: Subsurface soil moisture
+**smp**: Soil moisture profile
+**ssma**: Surface soil moisture anomaly
+**susma**: Subsurface soil moisture anomaly
+
+### Topography
+
+USGS/GMTED2010_FULL
+
+**height**: Min elevation - m - no scale - 231.92m
+
+### Vegetation
+
+MODIS/006/MOD13Q1
+MODIS/006/MCD15A3H
+
+Long term : 2011/01/01 to 2021/01/01
+
+**ndvi**: Normalized difference vegetation index over 16days - no unit - 0.0001 - 250m
+**evi**: Enhanced vegetation index over 16days - no unit - 0.0001 - 250m
+**lai**: Leaf area index over 4days - no unit - 0.1 - 500m
+**fpar**: Fraction of absorbed photosynthecatilly active radiation (400-700nm) absorbed by the green elements of a vegetation canopy over 4days - no unit - 0.001 - 500m
+
+### Productivity
+
+MODIS/006/MOD17A2H
+
+Long term : 2011/01/01 to 2021/01/01
+
+**gpp**: Gross primary production 8days - kg*C/m^2 - 0.0001 - 500m
+**npp**: Net primary production 8days - kg*C/m^2 - 0.0001 - 500m
+
+### Open Land Map Soil
+
+OpenLandMap/SOL/SOL_BULKDENS-FINEEARTH_USDA-4A1H_M/v02
+OpenLandMap/SOL/SOL_CLAY-WFRACTION_USDA-3A1A1A_M/v02
+OpenLandMap/SOL/SOL_ORGANIC-CARBON_USDA-6A1C_M/v02
+OpenLandMap/SOL/SOL_PH-H2O_USDA-4C1A2A_M/v02
+OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01
+
+**bulk**: Bulk density @ 0 cm depth - kg/m^3 - 10 - 250m
+**clay**: Clay content @ 0 cm depth - % (kg / kg) - no scale - 250m
+**soc**: Organic carbon content @0 cm depth - g/kg - 5 - 250m
+**ph**: pH in H20 @ 0 cm depth - pH - 10 - 250m
+**water**: Water content @ field capacity (33kPa) @ 0 cm depth - % - no scale _ 250m
+
+### Human variables: Global Human Modification
+
+CSP/HM/GlobalHumanModification
+
+**ghm**: Global human modification index - fraction of a km^2 - no scale - 1000m
+
+
+## Map Sites
+
+```{r}
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Subset the world data to include only the specified latitude range
+cropping <- as(raster::extent(-180, 180, 20, 90), "SpatialPolygons")
+
+
+world_subset <- raster::crop(as_Spatial(world),cropping)
+# Create a Lambert azimuthal equal-area projection centered on the North Pole
+lambert_proj <- st_crs("+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
+world_lambert <- st_transform(st_as_sf(world_subset), crs = lambert_proj)
+
+
+(sites <- st_as_sf(meco_16s_ns$sample_table, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+# Plot the map
+ggplot() +
+    geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+    geom_sf(data = sites, size = 3, shape = 23, fill = "darkred",alpha=.7) +
+    ggtitle("MAPP 16s sites") +
+    theme(plot.title = element_text(hjust = 0.5, size = 16))+
+    theme_minimal()+
+    theme(panel.background = element_rect(fill = "azure"))
+```
+
+
+## Select sites
+
+```{r}
+site_data <- site_data_raw %>% filter(Sample%in%meco_16s$sample_table$Sample)%>%
+    mutate(across(.cols= colnames(site_data_raw),.fns = ~replace(., . ==  -9999 , NA)))
+```
+
+
+## Count NAs and Imputations
+
+```{r}
+var_lt <- colnames(site_data)[grep('_lt', names(site_data))] # extract long term variables (as they also exist on monthly basis)
+months_we_want <- c("03","04","05") # march/april/may  (1 to 4 months before sampling)
+var_st <- colnames(site_data)[grep('03|04|05', names(site_data))]
+
+site_data_lt <- site_data%>%
+    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))
+site_data_st <- site_data%>%
+    select(all_of(c("X","Y",var_st,"bulk","gHM","height","ph","soc","water")))
+
+as.data.frame(colSums(is.na(site_data)))%>%
+    rename(nb_na=`colSums(is.na(site_data))`)%>%
+    mutate(var=rownames(.))%>%
+    filter(nb_na!=0)%>%
+    ggplot(aes(x=var,y=nb_na))+
+    geom_bar(stat='identity',fill='midnightblue')+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=45,hjust=1),
+          plot.title = element_text(face="bold"))+
+    ggtitle("Number of missing values")+
+    as.data.frame(colSums(is.na(site_data)))%>%
+    rename(nb_na=`colSums(is.na(site_data))`)%>%
+    mutate(var=rownames(.),
+           na_pct=(nb_na/202)*100)%>%
+    filter(nb_na!=0)%>%
+    ggplot(aes(x=var,y=na_pct))+
+    geom_bar(stat='identity',fill='mediumvioletred')+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=45,hjust=1),
+          plot.title = element_text(face="bold"))+
+    ggtitle("Percentage of missing values")
+```
+
+```{r}
+ncp_data_lt <- site_data %>% 
+    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
+    missMDA::estim_ncpPCA(scale=T)
+
+
+imputed_data_lt <- site_data %>% 
+    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))%>%
+    missMDA::imputePCA(ncp=5,scale=T)
+imputed_data_lt <- imputed_data_lt$completeObs %>% as.data.frame()
+
+ncp_data_st <- site_data %>% 
+    select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
+    mutate(across(everything(),as.numeric))%>%
+    missMDA::estim_ncpPCA(scale=T)
+
+
+imputed_data_st <- site_data %>% 
+    select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water")))%>%
+    missMDA::imputePCA(ncp=5,scale=T)
+imputed_data_st <- imputed_data_st$completeObs %>% as.data.frame()
+```
+
+
+
+## Create Short term 
+
+```{r}
+site_data_st_before_imputation <- site_data %>% 
+    select(all_of(c("X","Y",var_lt,var_st,"bulk","gHM","height","ph","soc","water")))%>%
+    mutate(across(.cols=all_of(var_lt),
+                  ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[3]))/3,
+                  .names = "{col}__st"
+    ))
+var_to_remove <- colnames(site_data_st_before_imputation)[grep('_[0-9]{2}', names(site_data_st_before_imputation))]
+site_data_st_before_imputation %<>%
+    select(-one_of(var_to_remove))%>% 
+    rename_with(~ stringr::str_remove(., "_lt_"), everything())
+
+st <- names(site_data_st_before_imputation)[grep('_st', names(site_data_st_before_imputation))]
+ncp_data_before_st <- site_data_st_before_imputation %>% 
+    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water"))) %>%
+    mutate(across(everything(),as.numeric))%>%
+    missMDA::estim_ncpPCA(scale=T)
+
+
+site_data_st_before_imputation_imputed <- site_data_st_before_imputation %>% 
+    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))%>%
+    missMDA::imputePCA(ncp=3,scale=T)
+site_data_st_before_imputation_imputed <- site_data_st_before_imputation_imputed$completeObs %>% as.data.frame()
+
+
+
+
+site_data_st_after_imputation <- imputed_data_st %>%
+    mutate(across(.cols=all_of(var_lt),
+                  ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
+                       get(paste0(gsub("_lt","_",cur_column()), months_we_want[3]))/3,
+                  .names = "{col}__st"
+    ))
+
+var_to_remove <- colnames(site_data_st_after_imputation)[grep('_[0-9]{2}', names(site_data_st_after_imputation))]
+site_data_st_after_imputation %<>%
+    select(-one_of(var_to_remove))%>% 
+    rename_with(~ stringr::str_remove(., "_lt_"), everything())
+```
+
+
+
+## PCA sites
+
+
+```{r}
+pca_sites_lt <- imputed_data_lt %>% 
+    select(!grep('_st', names(imputed_data_lt)))%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F)
+
+pca_sites_before_st <- site_data_st_before_imputation_imputed %>% 
+    select(grep('_st', names(site_data_st_before_imputation_imputed)))%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F) # NAs
+
+pca_sites_after_st <- site_data_st_after_imputation %>% 
+    select(grep('_st', names(site_data_st_after_imputation)))%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F)
+```
+
+```{r}
+arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
+  u <- c(range(data[,1], range(data[,2])))
+  u <- u - rep(at, each = 2)
+  r <- c(range(arrows[, 1], na.rm = TRUE), range(arrows[, 2], na.rm = TRUE))
+  rev <- sign(diff(u))[-2]
+  if (rev[1] < 0)
+    u[1:2] <- u[2:1]
+  if (rev[2] < 0)
+    u[3:4] <- u[4:3]
+  u <- u/r
+  u <- u[is.finite(u) & u > 0]
+  fill * min(u)
+}
+```
+
+```{r}
+eig <- pca_sites_lt$eig
+coord_pca <- as.data.frame(pca_sites_lt$ind$coord)
+coord_pca$site <- site_data$Sample
+coord_pca$country <- site_data$Country
+
+mul <- arrowMul(as.data.frame(pca_sites_lt$var$coord),
+               pca_sites_lt$ind$coord)
+
+pca_site_biplot <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="darkorange")+
+    theme_classic2()+
+    geom_vline(xintercept = 0,lty=2)+
+    geom_hline(yintercept = 0,lty=2)+
+    # ggrepel::geom_label_repel(data=filter(coord_pca,Dim.2< -3),aes(x=Dim.1,y=Dim.2,label=site))+
+    xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+    ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+    geom_segment(data= as.data.frame(pca_sites_lt$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+               lineend = "round", 
+               linejoin = "round",
+               linewidth = .75, 
+               arrow = arrow(length = unit(0.2, "inches")),
+               colour = "black" 
+  )+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_sites_lt$var$coord),pca_sites_lt$var$coord*mul), # add variable names at the end of arrows
+            aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
+                y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                label = var),
+             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    ggtitle("Biplot sites long term")+
+    theme(plot.title = element_text(face="bold"))
+```
+
+```{r}
+eig <- pca_sites_before_st$eig
+coord_pca <- as.data.frame(pca_sites_before_st$ind$coord)
+coord_pca$site <- site_data$Sample
+coord_pca$country <- site_data$Country
+
+mul <- arrowMul(as.data.frame(pca_sites_before_st$var$coord),
+               pca_sites_before_st$ind$coord)
+
+pca_site_biplot_st_before <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="cornflowerblue")+
+    theme_classic2()+
+    geom_vline(xintercept = 0,lty=2)+
+    geom_hline(yintercept = 0,lty=2)+
+    # ggrepel::geom_label_repel(data=filter(coord_pca,Dim.2< -3),aes(x=Dim.1,y=Dim.2,label=site))+
+    xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+    ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+    geom_segment(data= as.data.frame(pca_sites_before_st$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+               lineend = "round", 
+               linejoin = "round",
+               linewidth = .75, 
+               arrow = arrow(length = unit(0.2, "inches")),
+               colour = "black" 
+  )+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_sites_before_st$var$coord),pca_sites_before_st$var$coord*mul), # add variable names at the end of arrows
+            aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
+                y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                label = var),
+             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    ggtitle("Biplot sites short term (mean before imputation)")+
+    theme(plot.title = element_text(face="bold"))
+```
+
+```{r}
+eig <- pca_sites_after_st$eig
+coord_pca <- as.data.frame(pca_sites_after_st$ind$coord)
+coord_pca$site <- site_data$Sample
+coord_pca$country <- site_data$Country
+
+mul <- arrowMul(as.data.frame(pca_sites_after_st$var$coord),
+               pca_sites_after_st$ind$coord)
+
+pca_site_biplot_st_after <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="darkorchid4")+
+    theme_classic2()+
+    geom_vline(xintercept = 0,lty=2)+
+    geom_hline(yintercept = 0,lty=2)+
+    # ggrepel::geom_label_repel(data=filter(coord_pca,Dim.2< -3),aes(x=Dim.1,y=Dim.2,label=site))+
+    xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+    ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+    geom_segment(data= as.data.frame(pca_sites_after_st$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+               lineend = "round", 
+               linejoin = "round",
+               linewidth = .75, 
+               arrow = arrow(length = unit(0.2, "inches")),
+               colour = "black" 
+  )+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_sites_after_st$var$coord),pca_sites_after_st$var$coord*mul), # add variable names at the end of arrows
+            aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
+                y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                label = var),
+             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    ggtitle("Biplot sites short term (mean on imputed data)")+
+    theme(plot.title = element_text(face="bold"))
+```
+
+```{r}
+pca_site_biplot+pca_site_biplot_st_before+pca_site_biplot_st_after
+```
+
+
+## Cor plot
+
+```{r}
+plot_pairs <- GGally::ggpairs(select(site_data,where(is.numeric)),progress = F)
+```
+
+
+Dont like clust of var. Not based on biological rational
+```{r}
+tree <- ClustOfVar::hclustvar(select(site_data,where(is.numeric)))
+plot(tree)
+```
+
+```{r}
+test <- ClustOfVar::kmeansvar(X.quanti = select(site_data,where(is.numeric)),init=8)
+```
+
+
+
+```{r}
+ClustOfVar::plot.clustvar(test)
+```
+
