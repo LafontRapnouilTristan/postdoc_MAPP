@@ -302,7 +302,7 @@ for (i in 1:length(folder_names)){
     
     if(target=="16s"){ # Keep all bac and archaea?
         #Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
-        data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)&!grepl("Chloroplast",data_temp$motus$Order)
+        data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)&!grepl("Chloroplast",data_temp$motus$Order)  # MITO and ricketsiales
         
         # Proportion of each of these over total number of MOTUs
         non_target_prop[[folder_names[i]]] <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
@@ -929,6 +929,8 @@ plot_alpha <- alpha_plot_list$MAPP_16s/alpha_plot_list$MAPP_18s/alpha_plot_list$
 ggsave(plot_alpha,filename="../Figures/plot_alpha.png")
 ```
 
+
+NEED TO CHECK SINGLETONS ASSIGNATIONS
 
 ## Investigate depths
 
