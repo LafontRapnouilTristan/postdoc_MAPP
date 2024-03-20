@@ -49,7 +49,7 @@ With fastidious method & d=1 : effectively ASVs
 #### IV - Cluster Filtering
 
 **Minimum prevalence**: NA  
-**Minimum proportion/count**: 2  -- Remove rare (proportion) or OTUs with less than X sequences (X=2 => remove singletons)  
+**Minimum proportion/count**: 2  -- Remove rare (proportion) or ASVs with less than X sequences (X=2 => remove singletons)  
 **Search contaminant**: On server PhiX database
 
 #### V - Taxonomic Affiliation
@@ -77,43 +77,72 @@ NOT filtering assignation within FROGS
 Produce assignation stats
 Convert .BIOM to .TSV and give a sequence file to keep sequence info!! (More universal format even tho .BIOM is loadable into R for further analysis)
 
-
 ### FROGS Picrust2
 
-Picrust2 is a tool to infer from 16s communities the numbers of copy of functional genes and associated pathways allowing a functional characterization of your communities.
-For computational reasons and because they are likely to be filtered out in our analysis we removed singletons for this step.
+[Picrust 2](https://huttenhower.sph.harvard.edu/picrust/) or Phylogenetic Investigation of Communities by Reconstruction of Unobserved States is a software for predicting functional abundances based only on marker gene sequences.
+
+It allows for functional characterization of your microbial communities from 16s metabarcoding data.
+We ran Picrust 2 from within the Galaxy Toulouse platform with their pipeline names FROGSFUNC.
+The process is divided in three steps that we'll describe briefly but first we aggregate ASVs based on their similarity ,shared taxonomy and sequence coverage.
+This step is named FROGS affiliation postprocess on Galaxy Toulouse.
+
+#### Affiliation Postprocess
+
+**Input**: FASTA file containing our sequence and BIOM file with ASVs abundance and taxonomy.  
+**Is this amplicon hyper variable length**: NO
+**Minimum Identity**: ASVs will be aggregated if they share the same taxonomy AND with at least X% identity. We chose X = 99.  
+**Minimum Coverage**: ASVs will be aggregated if they share the same taxonomy AND with at least X% alignment coverage. We chose X = 99.  
+
+#### I - Place sequence and copy numbers
+
+It is the first step of PICRUSt2.
+It inserts your study sequences into a reference tree.
+By default, this reference tree is based on 20,000 16S sequences from genomes in the Integrated Microbial Genomes database.
+The script performs this step, which specifically:
+    * Aligns your study sequences with a multiple-sequence alignment of reference 16S, ITS or 18S sequences with HMMER.
+    * Finds the most likely placements of your study sequences in the reference tree with EPA_NG or SEPP.
+    * Produces a treefile with the most likely placement for each sequence as the new tips with GAPPA.
+    * Predicts marker copy number based solely on the sequences of marker genes with PICRUSt2. The available marker genes are 16S, ITS and 18S.
 
 
-#### I - Place and count copies
-
-This step aims at placing our OTUs sequences onto a reference tree within Picrust2 as well as estimating the number of 16s RNA genes copy present in our ASVs' genomes.
-
+**Input**: FASTA sequence file and BIOM file with ASVs abundance and taxonomy
 **Taxonomy marker**: 16s  
-**Placement tool**: epa-ng  
-**Minimum alignment length**: 0.8  
+**Placement Tool**: epa-ng
+**Minimum alignment length**: 0.8 - Proportion of total length of an iput sequence that must align with reference sequences.
+All other will be out.
 
-ASVs that have less than 80% of their sequence aligned with reference sequences are discarded.
+#### II - Calculate Function abundance
 
-#### II - Predict functions
+It is the second step of PICRUSt2. It ables to predicts :
+    * Functional abundances based solely on the sequences of marker genes with PICRUSt2. The available marker genes are 16S, ITS and 18S.
+    * Functions, weighted by the relative abundance of ASVs in the community. Inferring the metagenomes of the communities with PICRUSt2.
 
+There are three steps performed at this stage:
+    * It runs hidden-state prediction (hsp) to predict function abundances with castor-R of each ASVs placed in the PICRUSt2 reference phylogenetic tree (FROGSFUNC_1_placeseqs_copynumber outputs).
+    * The read depth per ASV is divided by the predicted marker (16S/ITS/18S) copy numbers. This is performed to help control for variation in marker copy numbers across organisms, which can result in interpretation issues. For instance, imagine an organism with five identical copies of the 16S gene that is at the same absolute abundance as an organism with one 16S gene. The ASV corresponding to the first organism would erroneously be inferred to be at higher relative abundance simply because this organism had more copies of the 16S gene.
+    * The ASV read depths per sample (after normalizing by marker (16S/ITS/18S) copy number) are multiplied by the predicted function copy numbers per ASV.
 
-- Functional abundances based solely on the sequences of marker genes with PICRUSt2. The available marker genes are 16S, ITS and 18S.
-- Functions, weighted by the relative abundance of ASVs in the community. Inferring the metagenomes of the communities with PICRUSt2.
+**Input**: BIOM and FASTA files + TREE file (.nwk) and the MARKER file (.tsv) containing the copy number of the marker produced by the previous step.  
+**Taxonomic marker**: 16s  
+**Target function database**: Select all  
+**NTSI cut-off**: 2 - Any sequence with NTSI > 2 is discarded. Nearest Sequenced Taxon Index (NSTI) is the phylogenetic distance between the ASV and the nearest sequenced reference genome. 
+**Identity alignment cut_off**: 0 - Any sequence below this identity threshold agaisnt reference will be discarded.
+**Coverage cut-off**: 0 - Same with coverage.
+**HSP method**: mp - Hidden state prediction method used. We stick with the maximum parsimony default.
 
+#### III - Calculate Pathways abundance
 
+It is the last step of PICRUSt2. This script infers MetaCyc/KEGG pathway abundances based on EC or KO number abundances.
+    * Regroups EC or KO numbers to MetaCyc or KEGG reactions, depending of the unstrat abundances input file.
+    * Infers which MetaCyc or KEGG pathways are present based on these reactions with MinPath.
+    * Calculates and returns the abundance of pathways identified as present.
 
-#### III - Predict Pathways
+Run twice, once for MetaCyc and once for KEGG.
+ 
+ **Input**: TSV file with function abundance prediction from step II (EC - metacyc and KO - kegg).
+ **Taxonomic marker**: 16s
+ **Pathway reference**: MetaCyc and then Kegg according to the input file (EC - metacyc and KO - kegg).
 
-
-
-- It runs hidden-state prediction (hsp) to predict function abundances with castor-R of each ASVs placed in the PICRUSt2 reference phylogenetic tree (FROGSFUNC_1_placeseqs_copynumber outputs).
-
-- The read depth per ASV is divided by the predicted marker (16S/ITS/18S) copy numbers. 
-    This is performed to help control for variation in marker copy numbers across organisms, which can result in interpretation issues.
-    For instance, imagine an organism with five identical copies of the 16S gene that is at the same absolute abundance as an organism with one 16S gene. 
-    The ASV corresponding to the first organism would erroneously be inferred to be at higher relative abundance simply because this organism had more copies of the 16S gene.
-
-- The ASV read depths per sample (after normalizing by marker (16S/ITS/18S) copy number) are multiplied by the predicted function copy numbers per ASV
 
 # Load Packages & custom function
 
@@ -146,11 +175,11 @@ data_temp <- read_delim(file = "../../data/paper_16s/tsv_com_with_singletons.tsv
                         delim = "\t", escape_double = FALSE, 
                         trim_ws = TRUE)
 
-reads_frame <- t(as.matrix(data_temp[,colnames(data_temp)[grepl("L001",colnames(data_temp))]])) # extract site per otus reads count matrix
-colnames(reads_frame) <- data_temp$observation_name #set colnames as cluster ID (otu 'names')
+reads_frame <- t(as.matrix(data_temp[,colnames(data_temp)[grepl("L001",colnames(data_temp))]])) # extract site per asvs reads count matrix
+colnames(reads_frame) <- data_temp$observation_name #set colnames as cluster ID (asv 'names')
 
 
-motus_frame <- data_temp[,colnames(data_temp)[!grepl("L001",colnames(data_temp))]] # extract motu information (taxonomy, counts etc)
+motus_frame <- data_temp[,colnames(data_temp)[!grepl("L001",colnames(data_temp))]] # extract asv information (taxonomy, counts etc)
 
 
 motus_frame %<>% dplyr::rename(sequence=seed_sequence) # rename seed_sequence columns to sequence
@@ -179,7 +208,7 @@ motus_frame %<>% separate(rdp_tax_and_bootstrap,
              remove = F)%>%
     mutate(across(.cols=which(grepl("boots_",colnames(.))),.fns=as.numeric))
 
-rownames(motus_frame) <- motus_frame$observation_name # use OTU names as rownames of the df
+rownames(motus_frame) <- motus_frame$observation_name # use asv names as rownames of the df
 pcr_frame <- data.frame(sample_id=colnames(data_temp)[grep("L001",colnames(data_temp))], type="sample",control_type=NA) # set pcr frame as required by metabaR
 rownames(pcr_frame) <- pcr_frame$sample_id # set rownames as site/sample id
 
@@ -201,7 +230,7 @@ rm(data_temp,motus_frame,pcr_frame,reads_frame,sample_frame) # remove temporary 
 
 ### Evaluate PCRs on sequencing depths
 
-Plot number of OTUs and reads per PCRs as well as their correlation.
+Plot number of ASVs and reads per PCRs as well as their correlation.
 Correlation between reads and richness are problematic as they might indicate insufficient sequencing depth.
 ```{r}
 data_temp <- metab_list# get one metabarlist
@@ -209,10 +238,10 @@ data_temp <- metab_list# get one metabarlist
 # Compute the number of reads per pcr
 data_temp$pcrs$nb_reads <- rowSums(data_temp$reads)
 
-# Compute the number of motus per pcr
-data_temp$pcrs$nb_motus <- rowSums(data_temp$reads>0)
+# Compute the number of asvs per pcr
+data_temp$pcrs$nb_asvs <- rowSums(data_temp$reads>0)
 metab_list <- data_temp
-check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "nb_reads", "nb_motus")])
+check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "nb_reads", "nb_asvs")])
 
 p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) + 
     geom_boxplot() + 
@@ -224,7 +253,7 @@ p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) +
     theme(axis.text.x = element_text(angle=45, h=1),
           plot.title = element_text(face="bold"))
 
-p2 <-  ggplot(data_temp$pcrs, aes(x=nb_reads, y=nb_motus, color = control_type)) + 
+p2 <-  ggplot(data_temp$pcrs, aes(x=nb_reads, y=nb_asvs, color = control_type)) + 
     geom_point() + 
     theme_bw() + 
     scale_y_log10() + 
@@ -235,6 +264,11 @@ diagplot <- p1 + p2 + plot_layout(guides="collect") # sample 124 low reads?
 rm(p1,p2,data_temp,check1,data)
 diagplot
 ```
+
+```{r}
+ggsave("Figures/reads_and_asvs_raw.png",diagplot,width = 14)
+```
+
 
 All samples but one have more than 10000 reads. 
 Remove this outlier
@@ -250,35 +284,34 @@ data_temp$pcrs$seqdepth_ok <- ifelse(data_temp$pcrs$nb_reads < 10e3, F, T)
 metab_list <- data_temp 
 
 # proportion of innaceptable pcrs seq depth, control excluded!!
-seq_depth_tab<- table(data_temp$pcrs$seqdepth_ok[data_temp$pcrs$type=="sample"]) /
+seq_depth_tab <- table(data_temp$pcrs$seqdepth_ok[data_temp$pcrs$type=="sample"]) /
     nrow(data_temp$pcrs[data_temp$pcrs$type=="sample",])
 print(seq_depth_tab)
 rm(data_temp)
 ```
 
 
-### Remove non target OTUs
+### Remove non target ASVs
 
-Tag non target OTUs
+Tag non target ASVs
 ```{r}
 non_target_prop <- NULL
 non_targetconta_prop <- NULL
 
 data_temp <- metab_list
 
-#Flag MOTUs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
+#Flag ASVs corresponding to target (TRUE) vs. non-target (FALSE) taxa 
 data_temp$motus$target_taxon <- grepl("Bacteria|Archaea", data_temp$motus$Kingdom)&!grepl("Chloroplast",data_temp$motus$Order)&!grepl("Mitochondria",data_temp$motus$Family)  # MITO and rickettsiales
-
-# Proportion of each of these over total number of MOTUs
+non_targ_asvs <- data_temp$motus$observation_name[which(data_temp$motus$target_taxon==F)]
+# Proportion of each of these over total number of ASVs
 non_target_prop <- table(data_temp$motus$target_taxon) / nrow(data_temp$motus)
-
+print(non_target_prop)
 # Intersection with extraction contaminant flags (not contaminant = T)
 non_target_prop <- table(data_temp$motus$target_taxon)
 print(non_target_prop)
 
 # Overwrite
 metab_list <- data_temp
-
 ```
 
 
@@ -332,9 +365,9 @@ rm(data_temp,melty)
 plot_tax_boots
 ```
 
-### Display noise in OTUs
+### Display noise in ASVs
 
-summarize noise in motus
+summarize noise in ASVs
 ```{r}
 # color_scale (create a common scale across datasets)
 a <- unlist(combn(c("untargeted_taxon","poorly_assigned"),1,simplify = F))
@@ -345,46 +378,48 @@ colScale <- scale_fill_manual(name = "grp",values = myColors, drop=F)
 
 data_temp <- metab_list
 
-# Create a table of MOTUs quality criteria 
+# Create a table of ASVs quality criteria 
 # noise is identified as FALSE in data_temp, the "!" transforms it to TRUE 
-motus.qual <- !data_temp$motus[,c("target_taxon","good_assign")] #not_degraded 
-colnames(motus.qual) <- c("untargeted_taxon","poorly_assigned") #degraded_seq  
+asvs.qual <- !data_temp$motus[,c("target_taxon","good_assign")] #not_degraded 
+colnames(asvs.qual) <- c("untargeted_taxon","poorly_assigned") #degraded_seq  
 
-motu_noise_tab <- NULL
-# Proportion of MOTUs potentially artifactual (TRUE) based on the criteria used
-motu_noise_tab$motus <- prop.table(table(apply(motus.qual, 1, sum) > 0))
+asv_noise_tab <- NULL
+# Proportion of asvs potentially artifactual (TRUE) based on the criteria used
+asv_noise_tab$motus <- prop.table(table(apply(asvs.qual, 1, sum) > 0))
 
 # Corresponding proportion of artifactual reads (TRUE)
-motu_noise_tab$reads <- prop.table(xtabs(data_temp$motus$observation_sum~apply(motus.qual, 1, sum) > 0))
+asv_noise_tab$reads <- prop.table(xtabs(data_temp$motus$observation_sum~apply(asvs.qual, 1, sum) > 0))
 
-# Proportion of MOTUs and reads potentially artifactual for each criterion
-apply(motus.qual, 2, sum) / nrow(motus.qual)
-apply(motus.qual, 2, function(x) sum(data_temp$motus$observation_sum[x])/sum(data_temp$motus$observation_sum))
+# Proportion of asvs and reads potentially artifactual for each criterion
+apply(asvs.qual, 2, sum) / nrow(asvs.qual)
+apply(asvs.qual, 2, function(x) sum(data_temp$motus$observation_sum[x])/sum(data_temp$motus$observation_sum))
 
-tmp.motus <- 
-    apply(sapply(1:ncol(motus.qual), function(x) {
-        ifelse(motus.qual[,x]==T, colnames(motus.qual)[x], NA)}), 1, function(x) {
+tmp.asvs <- 
+    apply(sapply(1:ncol(asvs.qual), function(x) {
+        ifelse(asvs.qual[,x]==T, colnames(asvs.qual)[x], NA)}), 1, function(x) {
             paste(sort(unique(x)), collapse = "|")
         })
-tmp.motus <- as.data.frame(gsub("^$", "not_artefactual", tmp.motus))
-colnames(tmp.motus) <-  "artefact_type"
-tmp.motus %<>% mutate(artefact_type=as.factor(artefact_type)  )
+tmp.asvs <- as.data.frame(gsub("^$", "not_artefactual", tmp.asvs))
+colnames(tmp.asvs) <-  "artefact_type"
+tmp.asvs %<>% mutate(artefact_type=as.factor(artefact_type)  )
 
-plot_noise_motu <- ggplot(tmp.motus, aes(x=1, fill=artefact_type)) +
+plot_noise_asv <- ggplot(tmp.asvs, aes(x=1, fill=artefact_type)) +
     geom_bar() +  xlim(0, 2) +
     labs(fill="Artifact type") + 
     coord_polar(theta="y") + theme_void() + 
     scale_fill_manual(name = "grp",values = myColors, drop=F) + 
     theme(legend.direction = "vertical") + 
-    ggtitle("16s - MOTUS noise")+
+    ggtitle("16s - ASVS noise")+
     theme(plot.title = element_text(face="bold"))
 
-rm(tmp.motus,motus.qual,data_temp,myColors,colScale,a,b)
+rm(tmp.asvs,asvs.qual,data_temp,myColors,colScale,a,b)
 
-plot_noise_motu
+plot_noise_asv
 ```
 
-
+```{r}
+ggsave("Figures/noise_in_asvs.png",plot_noise_asv)
+```
 
 
 ### Filter 
@@ -394,12 +429,12 @@ plot_noise_motu
 # Use tag-jump corrected metabarlist with the threshold identified above
 tmp <- metab_list
 
-# Subset on MOTUs: we keep motus that are defined as TRUE following the 
+# Subset onASVs: we keep asvs that are defined as TRUE following the 
 # criteria below (sum of x TRUE is equal to x with the rowSums function)
 row.names(tmp$motus) <- colnames(tmp$reads)
 
 tmp <- subset_metabarlist(tmp, "motus", 
-                          indices = rowSums(tmp$motus[,c("good_assign", "target_taxon")]) == 2)# ?poorly assigned?
+                          indices = rowSums(tmp$motus[,c("good_assign", "target_taxon")]) == 2)# remove untargeted taxa and poorly assigned (no assignation @phylum)
 
 # Subset on pcrs and keep only samples 
 data_temp <- subset_metabarlist(tmp, "pcrs", 
@@ -409,15 +444,15 @@ data_temp <- subset_metabarlist(tmp, "pcrs",
 #update counts and reads.    
 data_temp$motus$counts = colSums(data_temp$reads)
 data_temp$pcrs$reads_post = rowSums(data_temp$reads)
-data_temp$pcrs$motus_post = rowSums(ifelse(data_temp$reads>0, T, F))
+data_temp$pcrs$asvs_post = rowSums(ifelse(data_temp$reads>0, T, F))
 
 check <- melt(data_temp$pcrs[,c("nb_reads", "reads_post", 
-                                "nb_motus", "motus_post")])
-check$type <- ifelse(grepl("motus", check$variable), "richness", "abundance")
+                                "nb_asvs", "asvs_post")])
+check$type <- ifelse(grepl("asvs", check$variable), "richness", "abundance")
 
 summary_list <- summary_metabarlist(data_temp)
 
-if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty motus present"))}
+if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty asvs present"))}
 if(sum(colSums(data_temp$reads)==0)>0){print(paste0(folder_names[[i]]," empty pcrs present"))}
 
 sumpipeline_plots <- ggplot(data = check, aes(x = variable, y = value)) +
@@ -434,16 +469,18 @@ rm(tmp,data_temp,check)
 sumpipeline_plots
 ```
 
-
+```{r}
+ggsave("Figures/effect_of_cleaning_asvs_reads.png",sumpipeline_plots,width=14)
+```
 
 ### Check effect of filter on reads and richness
 
 
 ```{r}
-# Using the nb_reads and nb_motus defined previously in the data_temp$pcrs table
+# Using the nb_reads and nb_asvs defined previously in the data_temp$pcrs table
 data_temp <- cleaned_metablist
 
-check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "reads_post", "motus_post")])
+check1 <- reshape2::melt(data_temp$pcrs[,c("control_type", "reads_post", "asvs_post")])
 
 p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) + 
     geom_boxplot() + 
@@ -455,7 +492,7 @@ p1 <- ggplot(data <- check1, aes(x=control_type, y=value, color=control_type)) +
     theme(axis.text.x = element_text(angle=45, h=1),
           plot.title = element_text(face="bold"))
 
-p2 <-  ggplot(data_temp$pcrs, aes(x=reads_post, y=motus_post, color = control_type)) + 
+p2 <-  ggplot(data_temp$pcrs, aes(x=reads_post, y=asvs_post, color = control_type)) + 
     geom_point() + 
     theme_bw() + 
     scale_y_log10() + 
@@ -468,6 +505,12 @@ rm(p1,p2,data_temp,check1,data)
 
 diag_plots_post
 ```
+
+
+```{r}
+ggsave("Figures/cor_asvs_reads_postcleaning.png",diag_plots_post,width=14)
+```
+
 
 OK we have strong correlation between richness and reads within samples (deseq2 or rarefaction?)
 Will depend on questions (test link between bioclimatic/geographical variables and the number of reads)
@@ -510,8 +553,13 @@ TAXcl <- tax_table(taxmatcl)
 SAMcl <- sample_data(sammatcl)
 rownames(SAMcl) <- SAMcl$sample_id
 physeqcl <- phyloseq(OTUcl,TAXcl,SAMcl)
+```
 
-rm(data_temp_cleaned,data_temp,tmp,tmpcl,otumat,taxmat,sammat,OTU,TAX,SAM,otumatcl,taxmatcl,sammatcl,OTUcl,TAXcl,SAMcl)
+
+```{r}
+toremove <- grep("^metab|^cleaned|^physeq|non_targ_asvs|arrowMul", ls(), invert=T, value=T)
+rm(list = c(toremove, "toremove"))
+gc()
 ```
 
 
@@ -524,7 +572,7 @@ data_temp <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241|042-047|047-0
 data_temp@sam_data$reads_post <- rowSums(data_temp@otu_table)
 
 data_temp@sam_data$reads_post = rowSums(data_temp@otu_table) # reads per samples
-data_temp@sam_data$motus_post = rowSums(ifelse(data_temp@otu_table>0, T, F)) # motus per samples
+data_temp@sam_data$asvs_post = rowSums(ifelse(data_temp@otu_table>0, T, F)) # motus per samples
 physeqcl <- data_temp
 ```
 
@@ -561,7 +609,7 @@ meco_16s$tidy_dataset() #tidy datasets
 # Compute the number of reads per pcr
 meco_16s$sample_table$nb_reads <- colSums(meco_16s$otu_table)
 
-# Compute the number of motus per pcr
+# Compute the number of asvs per pcr
 meco_16s$sample_table$nb_reads <- colSums(meco_16s$otu_table>0)
 
 gc()
@@ -570,7 +618,7 @@ gc()
 # Explore 16s communities
 
 Samples 256 and 87 are duplicated (a and b). 
-256b and 87a are retained because of their higher sequencing depth allowing better characterization of their communities.
+256b and 87a are retained because of their higher sequencing depth.
 ```{r}
 colSums(meco_16s$otu_table[,grepl("256",colnames(meco_16s$otu_table))]);colSums(meco_16s$otu_table[,grepl("87",colnames(meco_16s$otu_table))])
 ```
@@ -589,14 +637,14 @@ Visualize number of singletons
 ```{r}
 data_temp <- meco_16s # get data
 
-n_single_otu <- sum(rowSums(data_temp$otu_table)==1) # number of single otus (those that are present exactly once across all sites)
-n_non_single_otu <- sum(rowSums(data_temp$otu_table)>1) # number of non single otu
-n_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)==1),]) # number of reads from the data set that correspond to OTU singletons (sum of reads on singletons subset)
+n_single_asv <- sum(rowSums(data_temp$otu_table)==1) # number of single asvs (those that are present exactly once across all sites)
+n_non_single_asv <- sum(rowSums(data_temp$otu_table)>1) # number of non single asvs
+n_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)==1),]) # number of reads from the data set that correspond to asv singletons (sum of reads on singletons subset)
 n_non_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)>1),]) # same but for non singletons
-df_tmp <- data.frame(otu_val=c(n_single_otu,n_non_single_otu),
+df_tmp <- data.frame(asv_val=c(n_single_asv,n_non_single_asv),
                      read_val=c(n_single_reads,n_non_single_reads),
                      type=c("n_single","n_non_single"))
-df_tmp %<>% mutate(pct_otus=otu_val/sum(otu_val), # convert to %
+df_tmp %<>% mutate(pct_asvs=asv_val/sum(asv_val), # convert to %
                    pct_reads=read_val/sum(data_temp$otu_table))%>%
     reshape2::melt()%>%
     filter(grepl("pct",variable))
@@ -607,15 +655,15 @@ singletons <- ggplot(df_tmp,aes(x = variable,y = value, fill=type))+
     scale_fill_manual(values = c("lightseagreen","mediumvioletred"))+
     theme(plot.title = element_text(face='bold'))+
     ylab("% of singletons")+
-    xlab("OTUs vs Reads")+
+    xlab("ASVs vs Reads")+
     scale_y_continuous(expand = c(0,0))
 
 
-alpha <- colSums(data_temp$otu_table!=0) # sample alpha diversity as the number of non null rows (otus)
-single_otu <-  colSums(filter(data_temp$otu_table,rowSums(data_temp$otu_table)==1)==1) # number of singletons otus within sample as the number of otus restricted to this sample (subset rowsums) and with one read (==1)
-# non_single_otu2 <- colSums(data_temp$otu_table>1)
-non_single_otu <- alpha-single_otu # OTUs that might be singletons within the sample but not the dataset 
-df_tmp <- data.frame(value = c(rbind(single_otu,non_single_otu)),
+alpha <- colSums(data_temp$otu_table!=0) # sample alpha diversity as the number of non null rows (asvs)
+single_asv <-  colSums(filter(data_temp$otu_table,rowSums(data_temp$otu_table)==1)==1) # number of singletons asvs within sample as the number of asvs restricted to this sample (subset rowsums) and with one read (==1)
+# non_single_asv2 <- colSums(data_temp$otu_table>1)
+non_single_asv <- alpha-single_asv # ASVs that might be singletons within the sample but not the dataset 
+df_tmp <- data.frame(value = c(rbind(single_asv,non_single_asv)),
                      type=c("n_single","n_non_single"),
                      sample=rep(1:ncol(data_temp$otu_table),each=2))%>%
     group_by(sample)%>%
@@ -648,7 +696,7 @@ meco_16s_singl$otu_table %<>% filter(rowSums(.)==1)
 meco_16s_singl$tidy_dataset()
 meco_16s_singl$sample_table %<>% mutate(dumb_group = "sample")
 meco_16s_singl$cal_abund()
-meco_16s_singl <- trans_abund$new(meco_16s_singl,taxrank = "Order",ntaxa = 8,groupmean = "dumb_group")
+meco_16s_singl <- trans_abund$new(meco_16s_singl,taxrank = "Order_conf_rdp",ntaxa = 8,groupmean = "dumb_group")
     
 plot_data <- meco_16s_singl$data_abund
 use_taxanames <- c(meco_16s_singl$data_taxanames,"unidentified")
@@ -667,18 +715,20 @@ donut_comp <- ggdonutchart(plot_data,"Abundance",
     theme(legend.position = "right")
 
 
-alpha_plot + theme(legend.position = "n") + alpha_plot_pct + singletons + theme(legend.position = "n") + donut_comp  + plot_layout(widths = c(1, 1))
+singleton_plots <- alpha_plot + theme(legend.position = "n") + alpha_plot_pct + singletons + theme(legend.position = "n") + donut_comp  + plot_layout(widths = c(1, 1))
+
+ggsave("Figures/diagnose_singletons.png",singleton_plots,width = 14,height = 14)
 ```
 
-We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads.
+
+We have only singletons in 16s but ~80% of our ASVs but ~4% of our reads.
 Can this be interpretated as high endemism in peatlands bacteria??
 And loads of rare strains? 
 We are working at low resolution with SWARM clustering, increasing singletons.
 We use the 'fastidious' option that should prevent to many singletons if they are close https://peerj.com/articles/1420/
-Is it legit to have that many singletons?
 
 
-Can't remove that many OTUs,huge effect on alpha div no?
+Can't remove that many ASVs,huge effect on alpha div no?
 Tho quite well distributed across samples.
 Should reduce divergence between my samples.
 
@@ -692,59 +742,9 @@ Hypothesis that phylogeny retains ecological features but is it true for bacteri
 re-compute for each samples the sequencing depth and richness
 ```{r}
 meco_16s$sample_table %<>%
-    select(sample_id,nb_reads,nb_motus,Sample,Y,X) %>%
+    select(sample_id,nb_reads,nb_asvs,Sample,Y,X) %>%
     mutate(nb_reads=colSums(meco_16s$otu_table),
-           nb_motus=colSums(meco_16s$otu_table>0))
-```
-
-```{r}
-distrib_reads_and_motus <- meco_16s$sample_table %>%
-    ggplot(aes(x=nb_reads))+
-    geom_histogram(bins=30,color='darkorange',fill='white')+
-    scale_y_continuous(expand = c(0,0))+
-    theme_classic2()+
-    meco_16s$sample_table %>%
-    ggplot(aes(x=nb_motus))+
-    geom_histogram(bins=30,color='deeppink4',fill='white')+
-    scale_y_continuous(expand = c(0,0))+
-    theme_classic2()
-
-cor_reads_motus <- meco_16s$sample_table %>%
-    ggplot(aes(x=nb_reads, y=nb_motus))+
-    geom_point(color='darkgrey')+
-    scale_y_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)))+
-    scale_x_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)) )+
-    theme_classic2()+
-    geom_smooth(method = 'lm',lty=2,color='darkorange')+
-    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("eq", "R2", "p")))
-
-tab16s <- t(otu_table(file2meco::meco2phyloseq(meco_16s))) # get the community
-class(tab16s) <- "matrix" # change class
-curve16s <- rarecurve(tab16s,step=100) # use vegan rarefaction curves
-names(curve16s) <- rownames(tab16s) # name curves after sample IDs
-
-# Coerce data into "long" form.
-protox <- mapply(FUN = function(x, y) {
-    mydf <- as.data.frame(x)
-    colnames(mydf) <- "value"
-    mydf$samples <- y
-    mydf$subsample <- attr(x, "Subsample")
-    mydf
-}, x = curve16s, y = as.list(names(curve16s)), SIMPLIFY = FALSE)
-
-xy <- do.call(rbind, protox)
-rownames(xy) <- NULL  # pretty
-
-# Plot.
-rare16s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
-    theme_classic2() +
-    scale_color_discrete(guide = "none") +  # turn legend on or off
-    geom_line(color = "aquamarine4")+
-    xlab("nb reads")+
-    ylab("OTUs count")
-
-
-distrib_reads_and_motus/(cor_reads_motus+rare16s)+ plot_annotation(title = 'With singletons') & theme(plot.title = element_text(face='bold'))
+           nb_asvs=colSums(meco_16s$otu_table>0))
 ```
 
 
@@ -755,98 +755,175 @@ meco_16s_ns$otu_table %<>% filter(rowSums(meco_16s_ns$otu_table)>1)
 meco_16s_ns$tidy_dataset()
 meco_16s_ns$sample_table %<>%
     mutate(nb_reads=colSums(meco_16s_ns$otu_table),
-           nb_motus=colSums(meco_16s_ns$otu_table>0))
+           nb_asvs=colSums(meco_16s_ns$otu_table>0))
 ```
 
 
 ```{r}
-distrib_reads_and_motus_ns <- meco_16s_ns$sample_table %>%
-    ggplot(aes(x=nb_reads))+
-    geom_histogram(bins=30,color='darkorange',fill='white')+
-    scale_y_continuous(expand = c(0,0))+
-    theme_classic2()+
-    meco_16s_ns$sample_table %>%
-    ggplot(aes(x=nb_motus))+
-    geom_histogram(bins=30,color='deeppink4',fill='white')+
-    scale_y_continuous(expand = c(0,0))+
-    theme_classic2()
-
-cor_reads_motus_ns <- meco_16s_ns$sample_table %>%
-    ggplot(aes(x=nb_reads, y=nb_motus))+
-    geom_point(color='darkgrey')+
-    scale_y_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)))+
-    scale_x_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)) )+
-    theme_classic2()+
-    geom_smooth(method = 'lm',lty=2,color='darkorange')+
-    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("eq", "R2", "p")))
-
-tab16s_ns <- t(otu_table(file2meco::meco2phyloseq(meco_16s_ns))) # get the community
-class(tab16s_ns) <- "matrix" # change class
-curve16s_ns <- rarecurve(tab16s_ns,step=100) # use vegan rarefaction curves
-names(curve16s_ns) <- rownames(tab16s_ns) # name curves after sample IDs
-
-# Coerce data into "long" form.
-protox <- mapply(FUN = function(x, y) {
-    mydf <- as.data.frame(x)
-    colnames(mydf) <- "value"
-    mydf$samples <- y
-    mydf$subsample <- attr(x, "Subsample")
-    mydf
-}, x = curve16s_ns, y = as.list(names(curve16s_ns)), SIMPLIFY = FALSE)
-
-xy <- do.call(rbind, protox)
-rownames(xy) <- NULL  # pretty
-
-# Plot.
-rare16s_ns <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
-    theme_classic2() +
-    scale_color_discrete(guide = "none") +  # turn legend on or off
-    geom_line(color = "aquamarine4")+
-    xlab("nb reads")+
-    ylab("OTUs count")
-
-distrib_reads_and_motus_ns/(cor_reads_motus_ns+rare16s_ns)+ plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+plot_alpha_divz_sgnsg <- NULL
+for(i in c("meco_16s","meco_16s_ns")){
+    
+    tmp <- get(i)
+    plot_title <- ifelse(match(i,c("meco_16s","meco_16s_ns"))==1,"With singletons","Without singletons")
+    
+    distrib_reads_and_asvs <- tmp$sample_table %>%
+        ggplot(aes(x=nb_reads))+
+        geom_histogram(bins=30,color='darkorange',fill='white')+
+        scale_y_continuous(expand = c(0,0))+
+        theme_classic2()+
+        tmp$sample_table %>%
+        ggplot(aes(x=nb_asvs))+
+        geom_histogram(bins=30,color='deeppink4',fill='white')+
+        scale_y_continuous(expand = c(0,0))+
+        theme_classic2()
+    
+    cor_reads_asvs <- tmp$sample_table %>%
+        ggplot(aes(x=nb_reads, y=nb_asvs))+
+        geom_point(color='darkgrey')+
+        scale_y_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)))+
+        scale_x_continuous(expand = expansion(mult = c(0,0.05), add= c(0,0)) )+
+        theme_classic2()+
+        geom_smooth(method = 'lm',lty=2,color='darkorange')+
+        ggpmisc::stat_poly_eq(ggpmisc::use_label(c("eq", "R2", "p")))
+    
+    tab16s <- t(otu_table(file2meco::meco2phyloseq(tmp))) # get the community
+    class(tab16s) <- "matrix" # change class
+    curve16s <- rarecurve(tab16s,step=100) # use vegan rarefaction curves
+    names(curve16s) <- rownames(tab16s) # name curves after sample IDs
+    
+    # Coerce data into "long" form.
+    protox <- mapply(FUN = function(x, y) {
+        mydf <- as.data.frame(x)
+        colnames(mydf) <- "value"
+        mydf$samples <- y
+        mydf$subsample <- attr(x, "Subsample")
+        mydf
+    }, x = curve16s, y = as.list(names(curve16s)), SIMPLIFY = FALSE)
+    
+    xy <- do.call(rbind, protox)
+    rownames(xy) <- NULL  # pretty
+    
+    # Plot.
+    rare16s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
+        theme_classic2() +
+        scale_color_discrete(guide = "none") +  # turn legend on or off
+        geom_line(color = "aquamarine4")+
+        xlab("nb reads")+
+        ylab("ASVs count")
+    
+    plot_alpha_divz_sgnsg[[i]] <- distrib_reads_and_asvs/(cor_reads_asvs+rare16s)+ plot_annotation(title = plot_title) & theme(plot.title = element_text(face='bold'))
+    
+}
+plot_alpha_divz_sgnsg[[1]]|(plot_alpha_divz_sgnsg[[2]])
 ```
+
+```{r}
+ggsave("Figures/alpha_div_with_sing.png",plot_alpha_divz_sgnsg[[1]],width = 14,height = 14)
+ggsave("Figures/alpha_div_no_sing.png",plot_alpha_divz_sgnsg[[2]],width = 14,height = 14)
+```
+
 
 ## Composition
 
 donuts plot without singletons fur 16s
 ```{r}
-tmp16s <- clone(meco_16s_ns)
-tmp16s$sample_table %<>% mutate(dumb_group = "sample")
-tmp16s$otu_table %<>% filter(rowSums(.)>1)
-tmp16s$tidy_dataset()
-
-tmp16s$cal_abund()
-tmp16s <- trans_abund$new(tmp16s,taxrank = "Order",ntaxa = 8,groupmean = "dumb_group")
+plots_comp <- NULL
+for( i in c("Order_conf_rdp","Genus_conf_rdp")){
+    tmp16s <- clone(meco_16s_ns)
+    tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+    tmp16s$otu_table %<>% filter(rowSums(.)>1)
+    tmp16s$tidy_dataset()
     
-plot_data <- tmp16s$data_abund
-use_taxanames <- tmp16s$data_taxanames
-plot_data$Taxonomy[!plot_data$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
-plot_data %<>% 
-    dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
-    dplyr::summarise(Abundance = sum(Abundance)) %>% 
-    as.data.frame(stringsAsFactors = FALSE)
-plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
-plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
-donut_comp <- ggdonutchart(plot_data,"Abundance",
-             fill="Taxonomy",
-             label = "label",
-             color = "white",
-             palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"))+
-    theme(legend.position = "right")
-
-tmp16s <- clone(meco_16s_ns)
-tmp16s$sample_table %<>% mutate(dumb_group = "sample")
-tmp16s$otu_table %<>% filter(rowSums(.)>1)
-tmp16s$tidy_dataset()
-
-tmp16s <- trans_abund$new(tmp16s,taxrank = "Order",ntaxa = 8)
-
-bar_comp <- tmp16s$plot_bar(others_color = '#666666',color_values = colorRampPalette(brewer.pal(8, "Dark2"))(9), xtext_keep = FALSE, legend_text_italic = FALSE)+
-    geom_col(width = 1)
-donut_comp + bar_comp + guides(fill = guide_legend(reverse = T)) +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+    tmp16s$cal_abund()
+    tmp16s <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8,groupmean = "dumb_group")
+    
+    plot_data <- tmp16s$data_abund
+    use_taxanames <- tmp16s$data_taxanames
+    plot_data$Taxonomy[!plot_data$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data %<>% 
+        dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+        dplyr::summarise(Abundance = sum(Abundance)) %>% 
+        as.data.frame(stringsAsFactors = FALSE)
+    plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+    plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
+    donut_comp <- ggdonutchart(plot_data,"Abundance",
+                               fill="Taxonomy",
+                               label = "label",
+                               color = "white",
+                               palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"))+
+        theme(legend.position = "right")
+    
+    tmp16s <- clone(meco_16s_ns)
+    tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+    tmp16s$otu_table %<>% filter(rowSums(.)>1)
+    tmp16s$tidy_dataset()
+    
+    tmp16s <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8)
+    
+    bar_comp <- tmp16s$plot_bar(others_color = '#666666',color_values = colorRampPalette(brewer.pal(8, "Dark2"))(9), xtext_keep = FALSE, legend_text_italic = FALSE)+
+        geom_col(width = 1)
+    plots_comp[[i]] <- donut_comp + bar_comp + guides(fill = guide_legend(reverse = T)) +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+}
+plots_comp$Order_conf_rdp
 ```
+
+
+```{r}
+ggsave("Figures/comp_order.png",plots_comp$Order_conf_rdp,width = 14)
+ggsave("Figures/com_genus.png",plots_comp$Genus_conf_rdp,width = 14)
+```
+
+```{r}
+df <- meco_16s_ns$otu_table
+df <- melt(as.matrix(df))
+colnames(df) <- c("ASVs","Samples","Reads")
+df%>%
+    mutate(Samples = gsub("[A-Z]|-|(?=_).*","",Samples,perl = T))%>%
+    ggplot(aes(x=ASVs,y=Samples,fill=log(Reads)))+
+    geom_tile()
+```
+
+
+Distribution and prev/relab
+
+```{r}
+prev <- rowSums(meco_16s_ns$otu_table>0)
+a <- prev%>%
+    as.data.frame()%>%
+ggplot(aes(x=prev))+
+        geom_histogram(bins=30,color='darkcyan',fill='white')+
+        scale_y_continuous(expand = c(0,0))+
+        theme_classic2()+
+    xlab("Cluster prevalence across samples")+
+    scale_y_log10()
+
+median_relab <- NULL
+mean_relab <- NULL
+for(i in 1:nrow(meco_16s_ns$otu_table)){
+    median_relab <- c(median_relab,median(as.numeric(meco_16s_ns$otu_table[i,]/colSums(meco_16s_ns$otu_table)))*100)
+    mean_relab <- c(mean_relab,mean(as.numeric(meco_16s_ns$otu_table[i,]/colSums(meco_16s_ns$otu_table)))*100)
+}
+b <- median_relab%>%
+    as.data.frame()%>%
+ggplot(aes(x=median_relab))+
+        geom_histogram(bins=30,color='burlywood3',fill='white')+
+        scale_y_continuous(expand = c(0,0))+
+        theme_classic2()+
+    xlab("Cluster median relative abundance within samples (%)")+
+    scale_y_log10()
+
+c <- mean_relab%>%
+    as.data.frame()%>%
+ggplot(aes(x=mean_relab))+
+        geom_histogram(bins=30,color='darkolivegreen4',fill='white')+
+        scale_y_continuous(expand = c(0,0))+
+        theme_classic2()+
+    xlab("Cluster mean relative abundance within samples (%)")+
+    scale_y_log10()
+
+(a+b)/(c+plot_spacer())
+```
+
 
 ```{r}
 ordi16s <- ordinate(file2meco::meco2phyloseq(meco_16s_ns), "NMDS", "horn")
@@ -1148,12 +1225,18 @@ site_data_st_after_imputation %<>%
 
 Test multiple imputation
 ```{r}
-
-test <- site_data_st_before_imputation %>% 
-    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))%>%
-    missMDA::MIPCA(ncp=3,scale=T,nboot = 1000)
-
-plot(test)
+# test <- site_data_st_before_imputation %>% 
+#     select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))%>%
+#     missMDA::MIPCA(ncp=3,scale=T,nboot = 1000)
+# 
+# plot(test)
+```
+```{r}
+# test2 <- site_data %>% 
+#     select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water")))%>%
+#     missMDA::MIPCA(ncp=3,scale=T,nboot = 1000)
+# 
+# plot(test2)
 ```
 
 ### Histogram of variables
@@ -1192,7 +1275,6 @@ for(j in data_sets){
 
 ### PCA sites
 
-
 ```{r}
 pca_sites_lt <- imputed_data_lt %>% 
     select(!grep('_st', names(imputed_data_lt)))%>%
@@ -1209,8 +1291,6 @@ pca_sites_after_st <- site_data_st_after_imputation %>%
     FactoMineR::PCA(scale.unit = T,
                     graph = F)
 ```
-
-
 
 ```{r}
 data_sets <- c("pca_sites_lt","pca_sites_before_st","pca_sites_after_st")
@@ -1267,7 +1347,368 @@ for(i in data_sets){
     scree_plot_list$pca_sites_after_st)
 ```
 
+## Select variables
 
-## Cor plot
+aet
+pr
+swe
+tmmn
+tmmx # delta tminmax?
+vap
+vpd
+moist
+ssm
+elevation
+evi
+fpar
+gpp
+ghm
+ph
+soc
+water
 
 
+
+# Save data sets for Hmsc 
+
+I need meco_16s_ns which is our communities with no singletons.
+I need site data that are imputed.
+I'll go with data imputed after short term averaging to reduce noise.
+Selected variables!!
+
+```{r}
+site_data_st_before_imputation_imputed$Sample <- site_data$Sample
+imputed_data_lt$Sample <- site_data$Sample
+combine<-site_data_st_before_imputation_imputed%>%
+  left_join(imputed_data_lt, by="Sample", suffix=c("",".y"))%>%
+  select(-ends_with(".y"))%>%
+    relocate(Sample)
+
+
+# save.image(file='outputs/preproc_myenv.RData')
+save(meco_16s_ns,file = "outputs/meco_16s.RData")
+save(combine,file = "outputs/site_data_imputed.RDS")
+save(non_targ_asvs, file = "non_targ_asvs.rds")
+rm(list=ls())
+gc()
+```
+# 16s and sites relations
+
+```{r}
+var_lt <- colnames(combine)[which(grepl("lt",colnames(combine)))]
+var_st <- colnames(combine)[which(grepl("st",colnames(combine)))]
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vap","vpd","moist","ssm","elevation","evi","fpar","gpp","ghm","ph","water","soc")
+var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
+var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
+
+XFormula_lt <- paste(var_lt,sep="", collapse = "+")
+XFormula_st <- paste(var_st,sep="", collapse = "+")
+
+XFormula_lt <- paste0("nb_asvs ~ ph +", XFormula_lt ,"+ nb_reads + (1|Sample_id)")
+XFormula_st <- paste0("nb_asvs ~ ph +", XFormula_st ,"+ nb_reads + (1|Sample_id)")
+
+combine %<>% leftjoin(meco_16s_ns$sample_table)
+
+test <- lme4::lmer(formula = XFormula_lt,
+                    data = combine)
+```
+
+
+# Picrust2 process
+
+
+## Alignment and stuff
+
+```{r}
+picrust_closestref <-  read_delim("picrust2/picrust_placeseqs_closests_ref_sequences_tsv.tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+
+picrust_closestref %>%
+    ggplot()+
+    geom_point(aes(x=NSTI,y=`%cov`,color="darkorange"))+
+    geom_point(aes(x=NSTI,y=`%id`,color="darkorchid4"))+
+    theme_classic2()+
+    ylab("Metric %") +
+     scale_color_identity(name = "Blast metrics",
+                          breaks = c("darkorange", "darkorchid4"),
+                          labels = c("Coverage", "Identity"),guide = "legend")+ 
+    scale_x_continuous(breaks = scales::breaks_width(2),expand = c(0, 0))+
+    ggplot(picrust_closestref)+
+    geom_point(aes(x=NSTI,y=score), color="aquamarine4")+
+    theme_classic2()+
+    ylab("Blast score")
+```
+
+Clusters with NSTI > 2 are considered poorly represented in the Picrust2 reference database.
+Additionnaly, a coverage < 50% is pretty low 
+
+```{r}
+(picrust_closestref %>%
+    ggplot(aes(x=score,y=`%id`))+
+    geom_point()+
+    picrust_closestref %>%
+    ggplot(aes(x=`%id`,y=`%cov`))+
+    geom_point()+
+    picrust_closestref %>%
+    ggplot(aes(x=score,y=`%cov`))+
+    geom_point())/
+    (picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%
+    ggplot(aes(x=score,y=`%id`))+
+    geom_point()+
+    picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%
+    ggplot(aes(x=`%id`,y=`%cov`))+
+    geom_point()+
+    picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%
+    ggplot(aes(x=score,y=`%cov`))+
+    geom_point())
+```
+
+```{r}
+picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%
+    nrow()/nrow(picrust_closestref) # 93% of OTUs
+
+picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%
+    summarise(sum_seq=sum(`Nb sequences`))/sum(picrust_closestref$`Nb sequences`) # Keep 98% of sequences
+```
+
+I don't have much confidence in these ASVs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out.
+
+```{r}
+asvs_picrust <- picrust_closestref %>%
+         filter(`%cov`>80&`%id`>80)%>%select(`#ASV`)
+asvs_picrust <- asvs_picrust$`#ASV`
+```
+
+
+```{r}
+meco_16s_picrust2 <- clone(meco_16s)
+
+meco_16s_picrust2$otu_table %<>% filter(rownames(.)%in%asvs_picrust)
+meco_16s_picrust2$tidy_dataset()
+```
+
+```{r}
+ab_trans_meco_16s_picrust2 <- trans_abund$new(meco_16s_picrust2,taxrank = "Order",ntaxa = 8)
+order_relab_16s_picrust2 <- ab_trans_meco_16s_picrust2$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE)+
+    geom_col(width = 1)+
+    ggtitle("MAPP 16s")+
+    theme(plot.title = element_text(face='bold'))
+```
+
+It changes a bit my 
+
+
+## Functions and pathways
+
+We investigate functions and pathways using two distinct databases (Kegg and MetaCyc).
+
+```{r}
+pathways_db <- c("Kegg","MetaCyc")
+```
+
+
+```{r}
+for(i in pathways_db){
+    
+    # get file from good database
+    shrtct <- ifelse(i=="Kegg","KO","EC")
+    
+    # load function copy number predictions
+    picrust_fct_pred_copynb <- read_delim(paste0("picrust2/picrust_fct__",shrtct,"_copynumbers_predicted_tsv.tsv"),
+                                              delim = "\t", escape_double = F, trim_ws = T)
+    # load function unstrat dataset
+    picrust_fct_unstrat <- read_delim(paste0("picrust2/picrust_fct_unstrat_",shrtct,"_tsv.tsv"),
+                                              delim = "\t", escape_double = F, trim_ws = T)
+    # load normalize marker abundance
+    picrust_norm_marker <- read_delim(paste0("picrust2/picrust_fct_marker_norm_tsv.tsv"),
+                                              delim = "\t", escape_double = F, trim_ws = T)
+}
+
+
+```
+
+
+```{r}
+kegg_pi <- read_delim("../../ressource/Picrust2/Galaxy103-[FROGSFUNC_2_functions__KO_copynumbers_predicted.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+
+kegg_pi2 <- read_delim("../../ressource/Picrust2/Galaxy109-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_KO.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+
+kegg_pi3 <- read_delim("../../ressource/Picrust2/Galaxy99-[FROGSFUNC_2_functions__frogsfunc_functions_marker_norm.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+```
+
+Rows of Kegg_pi2 correspond to non null columns of Kegg_pi 
+
+
+```{r}
+names(kegg_pi2)[grepl("L001",names(kegg_pi2))] <- gsub("[A-Z]|-|(?=_).*","",names(kegg_pi2)[grepl("L001",names(kegg_pi2))] ,perl = T)
+
+kegg_pi2%>%
+    select(c(1:4,which(names(.)%in%site_data$Sample)))%>%
+    filter(grepl("glucosidase",classification))%>%
+    mutate(across(5:ncol(.),~(.x/sum(.))*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value,fill=c4))+
+    geom_bar(stat = "identity",position = "stack",width=1)+
+    scale_fill_manual(values =RColorBrewer::brewer.pal(11,'Set3'))+
+    ylab("Pathway %")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))+
+    kegg_pi2%>%
+    select(c(1:4,which(names(.)%in%site_data$Sample)))%>%
+    filter(grepl("aminopep",classification))%>%
+    mutate(across(5:ncol(.),~(.x/sum(.))*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value,fill=c4))+
+    geom_bar(stat = "identity",position = "stack",width=1)+
+    scale_fill_manual(values =c("#4e8937",
+                                "#733cc9",
+                                "#6dc140",
+                                "#cf4cc3",
+                                "#63b889",
+                                "#d24172",
+                                "#4ca3ae",
+                                "#d74c33",
+                                "#656ad1",
+                                "#cf9133",
+                                "#6d2f7d",
+                                "#a6a34d",
+                                "#bb86cb",
+                                "#4a5c2f",
+                                "#6f97d0",
+                                "#814025",
+                                "#434a7b",
+                                "#cf8c70",
+                                "#78334b",
+                                "#d0849f"))+
+    ylab("Enzymes")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))
+```
+
+```{r}
+(EC_pi2%>%
+    select(c(1:4,which(names(.)%in%enzymes_data$Sample)))%>%
+    # mutate(across(5:ncol(.),~(.x/observation_sum)*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    filter(grepl("leucyl aminopep",classification))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value))+
+    geom_bar(stat = "identity",width=1,fill="#d74c33")+
+    ylab("Picrust2 leucyl aminopep")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))+
+    enzymes_data%>%
+    ggplot(aes(x=Sample,y=LAP))+
+    geom_bar(stat='identity',fill="#d74c33",width=1)+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0)))/
+    (EC_pi2%>%
+    select(c(1:4,which(names(.)%in%enzymes_data$Sample)))%>%
+    # mutate(across(5:ncol(.),~(.x/observation_sum)*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    filter(grepl("beta-glucosidase",classification))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value))+
+    geom_bar(stat = "identity",width=1,fill="#656ad1")+
+    ylab("Picrust2 beta-glucosidase")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))+
+    enzymes_data%>%
+    ggplot(aes(x=Sample,y=BG))+
+    geom_bar(stat='identity',fill="#656ad1",width=1)+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0)))
+
+```
+
+
+```{r}
+EC_pi2%>%
+    select(c(1:4,which(names(.)%in%mutate(meco_16s$sample_table,name=gsub("[A-Z]|-|(?=_).*","",sample_id ,perl = T))$Sample)))%>%
+    # mutate(across(5:ncol(.),~(.x/observation_sum)*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    group_by(name)%>%
+    summarise(val=sum(value))%>%
+    left_join(mutate(meco_16s$sample_table,name=gsub("[A-Z]|-|(?=_).*","",sample_id ,perl = T)))%>%
+    ggplot(aes(val,nb_reads))+
+    geom_point()+
+    xlab("Picrust2 copy estimation")
+```
+
+
+```{r}
+path_EC_pi3 <- read_delim("../../ressource/Picrust2/Galaxy115-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv", # read the tsv file
+                            delim = "\t", escape_double = FALSE, 
+                            trim_ws = TRUE)
+```
+
+```{r}
+names(path_EC_pi3)[grepl("L001",names(path_EC_pi3))] <- gsub("[A-Z]|-|(?=_).*","",names(path_EC_pi3)[grepl("L001",names(path_EC_pi3))] ,perl = T)
+```
+
+
+```{r}
+path_EC_pi3%>%
+    select(c(1:4,which(names(.)%in%site_data$Sample)))%>%
+    mutate(across(5:ncol(.),~(.x/sum(.))*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value,fill=c1))+
+    geom_bar(stat = "identity",position = "stack",width=1)+
+    scale_fill_manual(values =RColorBrewer::brewer.pal(7,'Dark2'))+
+    ylab("Pathway %")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))
+    
+```
+
+```{r}
+path_EC_pi3%>%
+    select(c(1:4,which(names(.)%in%site_data$Sample)))%>%
+    filter(grepl("Degradation;",classification))%>%
+    mutate(across(5:ncol(.),~(.x/sum(.))*100))%>%
+    pivot_longer(cols =c(5:ncol(.)))%>%
+    separate(col=classification,into = paste0("c",1:4),sep = ";")%>%
+    ggplot(aes(x=name,y=value,fill=c2))+
+    geom_bar(stat = "identity",position = "stack",width=1)+
+    scale_fill_manual(values =RColorBrewer::brewer.pal(11,'Set3'))+
+    ylab("Pathway %")+
+    xlab("Samples")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    scale_y_continuous(expand = c(0, 0))
+```
