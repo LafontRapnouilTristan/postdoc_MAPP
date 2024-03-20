@@ -683,17 +683,16 @@ ClustOfVar::plot.clustvar(test)
 # Test dbRDAs
 
 ```{r}
-dbrda_data16s <- site_data%>% 
-    select(!grep('_st', names(site_data)))%>%
-    select(-c(1:4,17,38))%>%
-    mutate(across(.cols=everything() ,.fns = ~replace(., . ==  -9999 , NA)))
+dbrda_data16s <- site_data_st_after_imputation%>% 
+    select(!grep('_st', names(site_data_st_after_imputation)))%>%
+    select(-c(1:2))
 dbrda_data16s$nb_reads <- meco_16s$sample_table$nb_reads
 
 com_16s <- com_matrices_list$com_prev_0_relab_0
 rownames(com_16s) <- gsub("[A-Z]|-|(?=_).*","",rownames(com_16s),perl = T)
 com_16s_hell <- labdsv::hellinger(com_16s)
 
-dbrda16s <- dbrda(com_16s_hell~Condition(nb_reads)+aet_lt+bulk+clay+def_lt+evi_lt+fpar_lt+gHM+gpp_lt+height+lai_lt+moist_lt+ndvi_lt+npp_lt+pdsi_lt+pet_lt+ph+pr_lt+smp_lt+soc+srad_lt+ssm_lt+ssma_lt+susm_lt+susma10+susma_lt+swe_lt+tmmn_lt+tmmx_lt+vap_lt+vpd_lt+water,data=dbrda_data16s, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+dbrda16s <- dbrda(com_16s_hell~Condition(nb_reads)+aet_lt+def_lt+evi_lt+fpar_lt+gHM+gpp_lt+height+lai_lt+moist_lt+ndvi_lt+npp_lt+pdsi_lt+pet_lt+ph+pr_lt+smp_lt+soc+srad_lt+ssm_lt+ssma_lt+susm_lt+susma_lt+swe_lt+tmmn_lt+tmmx_lt+vap_lt+vpd_lt+water,data=dbrda_data16s, distance="horn") # full model with morisita horn distance based on hellinger transformed data
 
 #get eigen values of axes
 eig <- c(dbrda16s$CCA$eig)
@@ -708,20 +707,9 @@ mul <- arrowMul(fort_rda16s[want, vars, drop = FALSE],
 fort_rda16s[want, vars] <- mul * fort_rda16s[want, vars] # scale the scores 
 
 
-veg_dbrda16s_full <- ggplot(fort_rda16s, aes(x = dbRDA1, y = dbRDA2)) +
-  ggConvexHull::geom_convexhull(data = cbind(subset(fort_rda16s, score == "sites"), # create convex hull around our treatments
-                               Trtmt=filtered_16s_hell$sample_table$Trtmt),
-                  aes(fill = Trtmt, color = Trtmt),
-                  alpha=0.2)+
-  scale_fill_manual(values =mo_col)+ # duplicate colours so it matches substrate colors
-  geom_point(data = cbind(subset(fort_rda16s, score == "sites"), # add points (sites) corresponding to samples
-                          Trtmt=filtered_16s_hell$sample_table$Trtmt, # add trtmt info for plotting
-                          substrate=filtered_16s_hell$sample_table$substrate, # add substrate info
-                          drought=filtered_16s_hell$sample_table$drought), # add drought
-             aes(color = Trtmt, shape = drought), # color by substrate and shape by drought
+veg_dbrda16s_full_lt <- ggplot(fort_rda16s, aes(x = dbRDA1, y = dbRDA2)) +
+    geom_point(data = subset(fort_rda16s, score == "sites"),color="seagreen", # add points (sites) corresponding to samples
              size = 3) +
-  # geom_text(aes(label=label))+
-  scale_shape_manual(values =  c(17,19))+
   geom_segment(data = subset(fort_rda16s, score == "biplot"), # add arrows for variables
                aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
                lineend = "round", 
@@ -735,13 +723,64 @@ veg_dbrda16s_full <- ggplot(fort_rda16s, aes(x = dbRDA1, y = dbRDA2)) +
             aes(x = ifelse(dbRDA1<0,dbRDA1*1.2,dbRDA1*1.2), # nudge a bit the coordinates so that they're not on the arrows
                 y = ifelse(dbRDA2<0,dbRDA2*1.2,dbRDA2*1.2),
                 label = label))+
-  scale_colour_manual(values = mo_col)+
   theme_classic()+
   xlab(paste0("dbRDA1 (",eig1,"%)"))+
   ylab(paste0("dbRDA2 (",eig2,"%)"))+
   guides(fill="none")  +
   geom_hline(yintercept=0,linetype = "dashed")+
   geom_vline(xintercept=0,linetype = "dashed")
+veg_dbrda16s_full_lt
+```
+
+
+```{r}
+dbrda_data16s <- site_data_st_after_imputation%>% 
+    select(!grep('_lt', names(site_data_st_after_imputation)))%>%
+    select(-c(1:2))
+dbrda_data16s$nb_reads <- meco_16s$sample_table$nb_reads
+
+com_16s <- com_matrices_list$com_prev_0_relab_0
+rownames(com_16s) <- gsub("[A-Z]|-|(?=_).*","",rownames(com_16s),perl = T)
+com_16s_hell <- labdsv::hellinger(com_16s)
+
+dbrda16s <- dbrda(com_16s_hell~Condition(nb_reads)+aet_st+def_st+evi_st+fpar_st+gHM+gpp_st+height+lai_st+moist_st+ndvi_st+npp_st+pdsi_st+pet_st+ph+pr_st+smp_st+soc+srad_st+ssm_st+ssma_st+susm_st+susma_st+swe_st+tmmn_st+tmmx_st+vap_st+vpd_st+water,data=dbrda_data16s, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+
+#get eigen values of axes
+eig <- c(dbrda16s$CCA$eig)
+eig1 <- round((eig[1]/sum(eig))*100,digits = 2) # % of explained inertia of the first axis
+eig2 <- round((eig[2]/sum(eig))*100,digits = 2) # % of explained inertia of the second axis
+
+fort_rda16s <- fortify(dbrda16s) # transform dbrda resusts in a ggplot2 usable format
+vars <- c("dbRDA1","dbRDA2") # we will plot in the first two dimensions
+want <- fort_rda16s[["score"]] == "biplot" # get variables scores (arrows)
+mul <- arrowMul(fort_rda16s[want, vars, drop = FALSE],
+                fort_rda16s[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
+fort_rda16s[want, vars] <- mul * fort_rda16s[want, vars] # scale the scores 
+
+
+veg_dbrda16s_full_st <- ggplot(fort_rda16s, aes(x = dbRDA1, y = dbRDA2)) +
+    geom_point(data = subset(fort_rda16s, score == "sites"),color="seagreen", # add points (sites) corresponding to samples
+             size = 3) +
+  geom_segment(data = subset(fort_rda16s, score == "biplot"), # add arrows for variables
+               aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+               lineend = "round", 
+               linejoin = "round",
+               linewidth = .75, 
+               arrow = arrow(length = unit(0.2, "inches")),
+               colour = "black" 
+  ) +
+  coord_fixed()+ # fix proportion between axis units
+  geom_text(data = fort_rda16s[want, , drop = FALSE ], # add variable names at the end of arrows
+            aes(x = ifelse(dbRDA1<0,dbRDA1*1.2,dbRDA1*1.2), # nudge a bit the coordinates so that they're not on the arrows
+                y = ifelse(dbRDA2<0,dbRDA2*1.2,dbRDA2*1.2),
+                label = label))+
+  theme_classic()+
+  xlab(paste0("dbRDA1 (",eig1,"%)"))+
+  ylab(paste0("dbRDA2 (",eig2,"%)"))+
+  guides(fill="none")  +
+  geom_hline(yintercept=0,linetype = "dashed")+
+  geom_vline(xintercept=0,linetype = "dashed")
+veg_dbrda16s_full_st+veg_dbrda16s_full_lt
 ```
 
 # Enzymes
@@ -1430,3 +1469,47 @@ ggtree(tree)
 ```
 
 # Cytometry
+
+```{r}
+cyto <- read.csv2("../../ressource/cytometry/bacteria_algae_abundances_2022.csv")
+cyto %<>%
+    rename(Sample=ID)%>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>%
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample))%>% # fix 87a and 87b sample ids
+    mutate(Sample=ifelse(grepl("246.1",Sample),"246a",Sample))%>%
+    mutate(Sample=ifelse(grepl("246.2",Sample),"246b",Sample))%>%
+    mutate(Sample=ifelse(grepl("246.3",Sample),"246c",Sample))%>%
+    arrange(Sample)%>%
+    mutate(across(4:10,as.numeric))
+
+cyto%>%
+    ggplot(aes(x=as.factor(Cytometer_run),y=Total_Bacteria_AB_g))+
+    geom_boxplot()
+```
+
+```{r}
+cyto%>%
+    left_join(filter(meco_16s$sample_table,meco_16s$sample_table$Sample%in%cyto$Sample))%>%
+    ggplot(aes(x=nb_reads,y=Total_Bacteria_AB_g))+
+    geom_point()+
+    cyto%>%
+    left_join(filter(meco_16s$sample_table,meco_16s$sample_table$Sample%in%cyto$Sample))%>%
+    ggplot(aes(x=nb_motus,y=Total_Bacteria_AB_g))+
+    geom_point()
+```
+
+
+
+# Merge all data sets
+
+```{r}
+sam_16s <- meco_16s$sample_table$Sample
+sam_cyto <- cyto$Sample
+sam_ez <- enzymes_data$Sample
+sam_sat <- site_data$Sample
+
+sam_cyto2 <- sam_cyto[which(sam_cyto%in%sam_16s)]
+sam_ez2 <- sam_ez[which(sam_ez%in%sam_16s)] # 140 samples
+```
+
