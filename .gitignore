@@ -15,5 +15,5 @@ Figures/
 R_scripts/paper_16s/Hmsc_pipeline/models/*
 R_scripts/paper_16s/Hmsc_pipeline/results/*
 *.pptx
-*/picrust2/*
-*/frogs_input/*
+R_scripts/paper_16s/Hmsc_pipeline/picrust2/
+R_scripts/paper_16s/Hmsc_pipeline/frogs_input/
