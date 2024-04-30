@@ -9,4 +9,8 @@ postdoc_MAPP.Rproj
 *.gexf
 hmsc/
 *.rds
-*.RDara
+*.RData
+Figures/
+*hmsc-venv/
+*Hmsc_pipeline/models/*
+*Hmsc_pipeline/results/*
