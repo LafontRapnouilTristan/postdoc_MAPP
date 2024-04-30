@@ -14,6 +14,7 @@
 ##################################################################################################
 
 
+
 ##################################################################################################
 # MAKE THE SCRIPT REPRODUCIBLE (BEGINNING)
 ##################################################################################################
@@ -54,7 +55,7 @@ showAlpha = TRUE
 ##################################################################################################
 # SET DIRECTORIES (BEGINNING)
 ##################################################################################################
-localDir = "./Hmsc pipeline/"
+localDir = "./R_scripts/paper_16s/Hmsc_pipeline/"
 modelDir = file.path(localDir, "models")
 resultDir = file.path(localDir, "results")
 if (!dir.exists(resultDir)) dir.create(resultDir)
@@ -73,13 +74,22 @@ library(Hmsc)
 library(colorspace)
 library(vioplot)
 
-samples_list = c(5,250,250,250,250,250)
-thin_list = c(1,1,10,100,1000,10000)
-nst = length(thin_list)
-nChains = 4
+# samples_list = c(5,250,250,250,250,250)
+# thin_list = c(1,1,10,100,1000,10000)
+# nst = length(thin_list)
+# nChains = 4
+
+
+
+samples_list <- c(5)
+thin_list <- c(1)
+nChains <- 4
+nst <- length(thin_list)
+
+
 
 text.file = file.path(resultDir,"/MCMC_convergence.txt")
-cat("MCMC Convergennce statistics\n\n",file=text.file,sep="")
+cat("MCMC Convergence statistics\n\n",file=text.file,sep="")
 
 ma.beta = NULL
 na.beta = NULL
@@ -101,6 +111,7 @@ while(Lst <= nst){
                                       "_samples_", as.character(samples),
                                       "_chains_",as.character(nChains),
                                       ".Rdata",sep = ""))
+  models <- m_list
   if(file.exists(filename)){
     load(filename)
     cat(c("\n",filename,"\n\n"),file=text.file,sep="",append=TRUE)

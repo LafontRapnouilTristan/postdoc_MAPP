@@ -333,7 +333,7 @@ cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
 ## prepare metabarlist
 
 ```{r}
-data_temp <- read_delim(file = "../../data/paper_16s/tsv_com_with_singletons.tsv", # read the tsv file
+data_temp <- read_delim(file = "frogs_inputs/Galaxy169-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
                         delim = "\t", escape_double = FALSE, 
                         trim_ws = TRUE)
 
@@ -719,9 +719,9 @@ physeqcl <- phyloseq(OTUcl,TAXcl,SAMcl)
 
 
 ```{r}
-toremove <- grep("^metab|^cleaned|^physeq|non_targ_asvs|arrowMul", ls(), invert=T, value=T)
-rm(list = c(toremove, "toremove"))
-gc()
+# toremove <- grep("^metab|^cleaned|^physeq|non_targ_asvs|arrowMul", ls(), invert=T, value=T)
+# rm(list = c(toremove, "toremove"))
+# gc()
 ```
 
 
@@ -803,6 +803,7 @@ n_single_asv <- sum(rowSums(data_temp$otu_table)==1) # number of single asvs (th
 n_non_single_asv <- sum(rowSums(data_temp$otu_table)>1) # number of non single asvs
 n_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)==1),]) # number of reads from the data set that correspond to asv singletons (sum of reads on singletons subset)
 n_non_single_reads <- sum(data_temp$otu_table[which(rowSums(data_temp$otu_table)>1),]) # same but for non singletons
+
 df_tmp <- data.frame(asv_val=c(n_single_asv,n_non_single_asv),
                      read_val=c(n_single_reads,n_non_single_reads),
                      type=c("n_single","n_non_single"))
@@ -913,7 +914,7 @@ meco_16s$sample_table %<>%
 same without singletons
 ```{r}
 meco_16s_ns <- clone(meco_16s)
-meco_16s_ns$otu_table %<>% filter(rowSums(meco_16s_ns$otu_table)>1)
+meco_16s_ns$otu_table %<>% filter(rowSums(meco_16s_ns$otu_table>0)>1)
 meco_16s_ns$tidy_dataset()
 meco_16s_ns$sample_table %<>%
     mutate(nb_reads=colSums(meco_16s_ns$otu_table),
@@ -997,34 +998,39 @@ for( i in c("Order_conf_rdp","Genus_conf_rdp")){
     tmp16s$tidy_dataset()
     
     tmp16s$cal_abund()
-    tmp16s <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8,groupmean = "dumb_group")
+    tmp16s1 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8,groupmean = "dumb_group")
     
-    plot_data <- tmp16s$data_abund
-    use_taxanames <- tmp16s$data_taxanames
-    plot_data$Taxonomy[!plot_data$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
-    plot_data %<>% 
+    plot_data1 <- tmp16s1$data_abund
+    use_taxanames <- tmp16s1$data_taxanames
+    plot_data1$Taxonomy[!plot_data1$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data1 %<>% 
         dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
         dplyr::summarise(Abundance = sum(Abundance)) %>% 
         as.data.frame(stringsAsFactors = FALSE)
-    plot_data$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
-    plot_data$label <- paste0(round(plot_data$Abundance, 1),"%")
-    donut_comp <- ggdonutchart(plot_data,"Abundance",
+    plot_data1$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+    plot_data1$label <- paste0(round(plot_data1$Abundance, 1),"%")
+    donut_comp <- ggdonutchart(plot_data1,"Abundance",
                                fill="Taxonomy",
                                label = "label",
                                color = "white",
-                               palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"))+
+                               palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"),
+                               guide = guide_legend(reverse = TRUE) )+
         theme(legend.position = "right")
+
+    tmp16s2 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8)
+    plot_data2 <- tmp16s2$data_abund
+    plot_data2$Taxonomy[!plot_data2$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data2$Taxonomy %<>% factor(., levels = rev(c(use_taxanames[-9], "Others","unidentified")))
+   bar_comp <- plot_data2%>%
+        ggplot(aes(x=Sample,y=Abundance,fill=Taxonomy),color=NA)+
+        geom_bar(stat = "identity",width=1,position='fill')+
+        scale_fill_manual(values =  rev(c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey")),
+                          guide = guide_legend(reverse = TRUE) )+
+        scale_y_continuous(expand = c(0,0))+
+        theme(axis.text.x = element_blank(),
+              axis.ticks.x = element_blank())
     
-    tmp16s <- clone(meco_16s_ns)
-    tmp16s$sample_table %<>% mutate(dumb_group = "sample")
-    tmp16s$otu_table %<>% filter(rowSums(.)>1)
-    tmp16s$tidy_dataset()
-    
-    tmp16s <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8)
-    
-    bar_comp <- tmp16s$plot_bar(others_color = '#666666',color_values = colorRampPalette(brewer.pal(8, "Dark2"))(9), xtext_keep = FALSE, legend_text_italic = FALSE)+
-        geom_col(width = 1)
-    plots_comp[[i]] <- donut_comp + bar_comp + guides(fill = guide_legend(reverse = T)) +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+    plots_comp[[i]] <- donut_comp + bar_comp  +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
 }
 plots_comp$Order_conf_rdp
 ```
@@ -1039,10 +1045,16 @@ ggsave("Figures/com_genus.png",plots_comp$Genus_conf_rdp,width = 14)
 df <- meco_16s_ns$otu_table
 df <- melt(as.matrix(df))
 colnames(df) <- c("ASVs","Samples","Reads")
+ord <- hclust(vegan::vegdist(labdsv::hellinger(t(meco_16s_ns$otu_table)),method = "horn"),method = "ward.D2")$order
+
 df%>%
     mutate(Samples = gsub("[A-Z]|-|(?=_).*","",Samples,perl = T))%>%
-    ggplot(aes(x=ASVs,y=Samples,fill=log(Reads)))+
-    geom_tile()
+    mutate(sample_ord = factor(Samples,
+                               levels = gsub("[A-Z]|-|(?=_).*","",colnames(meco_16s_ns$otu_table),perl = T)[ord]))%>%
+    ggplot(aes(x=ASVs,y=sample_ord,fill=log(Reads)))+
+    geom_tile()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
 ```
 
 
@@ -1057,7 +1069,7 @@ ggplot(aes(x=prev))+
         scale_y_continuous(expand = c(0,0))+
         theme_classic2()+
     xlab("Cluster prevalence across samples")+
-    scale_y_log10()
+  coord_trans(y = "log1p")
 
 median_relab <- NULL
 mean_relab <- NULL
@@ -1072,7 +1084,7 @@ ggplot(aes(x=median_relab))+
         scale_y_continuous(expand = c(0,0))+
         theme_classic2()+
     xlab("Cluster median relative abundance within samples (%)")+
-    scale_y_log10()
+  coord_trans(y = "log1p")
 
 c <- mean_relab%>%
     as.data.frame()%>%
@@ -1081,9 +1093,9 @@ ggplot(aes(x=mean_relab))+
         scale_y_continuous(expand = c(0,0))+
         theme_classic2()+
     xlab("Cluster mean relative abundance within samples (%)")+
-    scale_y_log10()
+  coord_trans(y = "log1p")
 
-(a+b)/(c+plot_spacer())
+ggsave(filename = "Figures/prev_otu.png",plot=(a+b)/(c+plot_spacer()))
 ```
 
 
@@ -1139,7 +1151,7 @@ For each variable is given: name - unit - scale - resolution.
 ### Terra Climate
 
 These are monthly weather data.
-Long term : 2011/01/01 to 2021/01/01
+Long term : 2016/01/01 to 2021/01/01
 
 With scale being a scaling factor by which to multiply the variable to get the right values.
 
@@ -1158,29 +1170,26 @@ With scale being a scaling factor by which to multiply the variable to get the r
 
 ### SMAP soil
 
-NASA_USDA/HSL/SMAP10KM_soil_moisture
+NASA/SMAP/SPL3SMP_E/005
 
 These are monthly soil data.
 Long term : 2016/01/01 to 2021/01/01
 
-**ssm**: Surface soil moisture
-**susm**: Subsurface soil moisture
-**smp**: Soil moisture profile
-**ssma**: Surface soil moisture anomaly
-**susma**: Subsurface soil moisture anomaly
+**soil_moisture**: Top layer soil moisture (0 - 5) - volume fraction - no scale - 9000 m
+
 
 ### Topography
 
 USGS/GMTED2010_FULL
 
-**height**: Min elevation - m - no scale - 231.92m
+**elevation**: Min elevation - m - no scale - 231.92m
 
 ### Vegetation
 
 MODIS/006/MOD13Q1
 MODIS/006/MCD15A3H
 
-Long term : 2011/01/01 to 2021/01/01
+Long term : 2016/01/01 to 2021/01/01
 
 **ndvi**: Normalized difference vegetation index over 16days - no unit - 0.0001 - 250m
 **evi**: Enhanced vegetation index over 16days - no unit - 0.0001 - 250m
@@ -1191,7 +1200,7 @@ Long term : 2011/01/01 to 2021/01/01
 
 MODIS/006/MOD17A2H
 
-Long term : 2011/01/01 to 2021/01/01
+Long term : 2016/01/01 to 2021/01/01
 
 **gpp**: Gross primary production 8days - kg*C/m^2 - 0.0001 - 500m
 **npp**: Net primary production 8days - kg*C/m^2 - 0.0001 - 500m
@@ -1208,7 +1217,7 @@ OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01
 **clay**: Clay content @ 0 cm depth - % (kg / kg) - no scale - 250m
 **soc**: Organic carbon content @0 cm depth - g/kg - 5 - 250m
 **ph**: pH in H20 @ 0 cm depth - pH - 10 - 250m
-**water**: Water content @ field capacity (33kPa) @ 0 cm depth - % - no scale _ 250m
+**water**: Water content @ field capacity (33kPa) @ 0 cm depth - % - no scale - 250m
 
 ### Human variables: Global Human Modification
 
@@ -1300,6 +1309,15 @@ var_missing_val <- as.data.frame(colSums(is.na(site_data)))%>% # plot NAs counts
 
 ggsave("Figures/var_mssing_val.png",var_missing_val,width=16)
 ```
+
+```{r}
+as.data.frame(rowSums(is.na(site_data)))%>%
+    ggplot(aes(x=1:nrow(.),y=`rowSums(is.na(site_data))`))+
+    geom_bar(stat='identity',width=1)
+
+site_data[which.max((rowSums(is.na(site_data)))),]
+```
+
 
 ### Create short term
 
@@ -1562,17 +1580,18 @@ pca_sites <- (pca_site_biplot$pca_sites_lt+scree_plot_list$pca_sites_lt)/
 ggsave("Figures/pca_sites.png",pca_sites,width = 21/2.54 ,height= 29.7/2.54)
 ```
 
-### Cluster sites
+# Cluster sites
 
+## On Var
 
 pet and aet are highly correlated -> use aet
 vap and vpd same -> use vpd
 evi and ndvi -> use evi
 fpar and lai -> use fpar
 gpp and npp -> gpp
+moist and water are suposed to be the same but water is at much finer scale (250m vs 9000)
 
-
-Lon Lat clustering
+Lon Lat clustering -> Not making any sens ain't it?
 ```{r}
 site_XY_dend <- imputed_data_lt %>% 
     select(c(X,Y))
@@ -1609,11 +1628,6 @@ dend_XY <- ggplot(dend_data_site_XY$segments)+
                                 "#619dd7"))+
     ggtitle("Lon/Lat clustering")
 ```
-pet and aet are highly correlated -> use aet
-vap and vpd same -> use vpd
-evi and ndvi -> use evi
-fpar and lai -> use fpar
-gpp and npp -> gpp
 
 ```{r}
 color_pool <- c("#7f61d3","#84b83a","#be4eb2","#4db955","#d54272","#6abf87","#d14b33","#3fc1bf","#d99037",
@@ -1848,10 +1862,7 @@ pr
 swe
 tmmn
 tmmx # delta tminmax?
-vap
 vpd
-soil_moisture
-ssm
 elevation
 evi
 fpar
@@ -1859,9 +1870,122 @@ gpp
 ghm
 ph
 soc
-water
+moist
+
+```{r}
+data_sets <- c("site_data_lt",
+               'imputed_data_lt',
+               "site_data_st_after_imputation",
+               "site_data_st_before_imputation_imputed")
+
+target_var <- c("aet",
+                "pr",
+                "swe",
+                "tmmn",
+                "tmmx", # delta tminmax?
+                "vpd",
+                "height",
+                "evi",
+                "fpar",
+                "gpp",
+                "gHM",
+                "ph",
+                "soc",
+                "moist")
+
+for(j in data_sets){
+    message(j)
+    tmp <- get(j)
+    names(tmp) <- gsub("_.t$","",names(tmp))
+
+    pairs <- ggpairs(tmp,
+                     columns=which(colnames(tmp)%in%target_var),
+                     progress = F,
+                     axisLabels = "none",
+                     # LOWER TRIANGLE ELEMENTS: add line with smoothing; make points transparent and smaller
+                     lower = list(continuous = function(...) 
+                         ggally_smooth(..., colour="darkolivegreen3", alpha = 0.3, size=0.8)), 
+                     # DIAGONAL ELEMENTS: histograms
+                     diag = list(continuous = function(...) 
+                         ggally_barDiag(..., fill="grey")),
+                     
+                     # UPPER TRIANGLE ELEMENTS: use fct. creating corr heatmap with sign stars
+                     upper = list(continuous = cor_fun)) + 
+        theme(strip.background = element_blank(), # remove color
+              strip.text = element_text(size=6,angle=45), # change font and font size
+              axis.line = element_line(colour = "grey"),
+              # remove grid
+              panel.grid.minor = element_blank(), )+  # remove smaller gridlines
+        # panel.grid.major = element_blank()    # remove larger gridlines)
+        ggtitle(j)+
+        theme(plot.title = element_text(face="bold"))
+    
+    
+    ggsave(plot=pairs,
+           filename=paste0("Figures/pairs_slctd_",j,".png"))
+}
+```
 
 
+## On Communities
+
+```{r}
+d_com <- meco_16s_ns$otu_table %>% t() %>% labdsv::hellinger() %>%set_rownames(gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))  %>% vegan::vegdist(method = "horn") %>% hclust(method = "ward.D2") %>% as.dendrogram()
+
+diss_com <- meco_16s_ns$otu_table %>% t() %>% labdsv::hellinger() %>%set_rownames(gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))
+
+assign("comu_dissimilarity",as.matrix(vegdist(diss_com,method = "horn")))
+```
+
+
+```{r}
+tmp <- d_com
+    tmp %<>% 
+        # set('labels_col',value = color_pool[color_xy])%>%
+        set("branches_lty", 1)%>%
+        set("branches_lwd",1)%>%
+        set("labels_cex",rep(1,nrow(site_data_lt)))%>%
+        as.ggdend()
+    tmp$labels %<>%
+        mutate(Sample=label)%>%
+        left_join(site_data[,1:2])%>%
+        mutate(col=color_pool[as.numeric(as.factor(Country))])
+    tmp$segments%<>%
+        mutate(across(c(2,4),~log(1+.x)))
+    p <- tmp%>%ggplot(labels = F)+
+        ggtitle(paste0("Site clustering ","com"))+
+        theme(plot.title = element_text(face="bold"))+
+        coord_fixed()+
+        coord_flip()+
+        scale_y_reverse()+
+        ylim(c(max(tmp$segments$y),-0.9))+
+        theme_classic2()
+    
+    p <- p+ ggnewscale::new_scale_color()+
+        geom_text(tmp$labels,mapping=aes(x=x,y=y-c(max(tmp$segments$y)*c(.05,.2)),
+                                         label=label,colour=Country),
+                  key_glyph = draw_key_rect)+
+        scale_colour_manual(values=color_pool)+
+        theme(axis.line.y = element_blank(),
+              axis.text.y = element_blank(),
+              axis.ticks.y = element_blank(),
+              axis.title.y = element_blank())+
+        ylab("log( 1 + euclidean distance)")
+    
+    entang_measure_dcom <- dendlist(d_xy,d_com) %>% 
+        untangle(method = "step1side") %>% entanglement()
+
+    entang_measure_dcom
+    
+    
+    dendlist(d_lt,d_com) %>% 
+        untangle(method = "step1side") %>% entanglement()
+```
+
+```{r}
+rm(a,b,alpha_plot,alpha_plot_pct,b,c,cleaned_metablist,cor_reads_asvs,curve16s,df_ordi_16s,distrib_reads_and_asvs,donut_comp,eig,hcd_site_XY,km_plot2,km_plot3,km_plot4,km_plot5,km_plot6,km_plot7,km2_res,km3_res,km4_res,km5_res,km6_res,km7_res,meco_16s_singl,metab_list,ordi16s,p,p_list_dend,p_list_km,pairs,pca_site_biplot,pca_sites,pca_sites_after_st,pca_sites_before_st,pca_sites_lt,pca_tmp,physeq,physeqcl,plot_alpha_divz_sgnsg,plot_data,plot_list,plots_comp,protox,rare16s,scree_plot_list,singleton_plots,singletons,site_XY_dend,tab16s,tmp16s,tmp,var_missing_val)
+gc()
+```
 
 # Save data sets for Hmsc 
 
@@ -1873,15 +1997,17 @@ Selected variables!!
 ```{r}
 site_data_st_before_imputation_imputed$Sample <- site_data$Sample
 imputed_data_lt$Sample <- site_data$Sample
-combine<-site_data_st_before_imputation_imputed%>%
-  left_join(imputed_data_lt, by="Sample", suffix=c("",".y"))%>%
-  select(-ends_with(".y"))%>%
+combined <- site_data_st_before_imputation_imputed%>%
+    left_join(imputed_data_lt, by="Sample", suffix=c("",".y"))%>%
+    select(-ends_with(".y"))%>%
+    left_join(site_best_part)%>%
+    left_join(site_data[,1:4])%>%
     relocate(Sample)
 
 
 # save.image(file='outputs/preproc_myenv.RData')
 save(meco_16s_ns,file = "outputs/meco_16s.RData")
-save(combine,file = "outputs/site_data_imputed.RDS")
+save(combined,file = "outputs/site_data_imputed.RDS")
 save(non_targ_asvs, file = "non_targ_asvs.rds")
 rm(list=ls())
 gc()
@@ -1889,23 +2015,90 @@ gc()
 
 # 16s and sites relations
 
+## LMM
+
 ```{r}
-var_lt <- colnames(combine)[which(grepl("lt",colnames(combine)))]
-var_st <- colnames(combine)[which(grepl("st",colnames(combine)))]
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vap","vpd","moist","ssm","elevation","evi","fpar","gpp","ghm","ph","water","soc")
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vap","vpd","moist","height","evi","fpar","gpp","gHM","ph","water","soc")
 var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
 var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
 
 XFormula_lt <- paste(var_lt,sep="", collapse = "+")
 XFormula_st <- paste(var_st,sep="", collapse = "+")
 
-XFormula_lt <- paste0("nb_asvs ~ ph +", XFormula_lt ,"+ nb_reads + (1|Sample_id)")
-XFormula_st <- paste0("nb_asvs ~ ph +", XFormula_st ,"+ nb_reads + (1|Sample_id)")
+XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ nb_reads ")
+XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ nb_reads ")
 
-combine %<>% leftjoin(meco_16s_ns$sample_table)
+combined %<>% left_join(meco_16s_ns$sample_table)
 
-test <- lme4::lmer(formula = XFormula_lt,
-                    data = combine)
+test <- lm(formula = XFormula_st,
+                    data = combined)
+anova(test)
+```
+
+## dbRDA
+
+```{r}
+formulaZ <- c(XFormula_lt,XFormula_st)
+dbrda_site_biplot <- NULL
+
+for(i in formulaZ){
+    
+    formula_tmp <- paste0("labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+",gsub("\\+ nb_reads.*$|nb_asvs ~","",i))
+    dbrda_tmp <- dbrda(formula=formula(formula_tmp),data=combined, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+    
+    #get eigen values of axes
+    eig <- c(dbrda_tmp$CCA$eig)
+    eig1 <- round((eig[1]/sum(eig))*100,digits = 2) # % of explained inertia of the first axis
+    eig2 <- round((eig[2]/sum(eig))*100,digits = 2) # % of explained inertia of the second axis
+    
+    fort_rda_tmp <- fortify(dbrda_tmp) # transform dbrda results in a ggplot2 usable format
+    vars <- c("dbRDA1","dbRDA2") # we will plot in the first two dimensions
+    want <- fort_rda_tmp[["score"]] == "biplot" # get variables scores (arrows)
+    mul <- arrowMul(fort_rda_tmp[want, vars, drop = FALSE],
+                    fort_rda_tmp[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
+    fort_rda_tmp[want, vars] <- mul * fort_rda_tmp[want, vars] # scale the scores 
+    
+    
+    dbrda_site_biplot[[formula_tmp]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
+        geom_point(data = cbind(subset(fort_rda_tmp, score == "sites"), # add points (sites) corresponding to samples
+                                country=combined$Country,
+                                cluster=combined$bp_st_aft), 
+                   aes(color = country, shape = combined$bp_st_aft), 
+                   size = 3) +
+        scale_shape_manual(values =  c(17,19))+
+        geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
+                     aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+                     lineend = "round", 
+                     linejoin = "round",
+                     linewidth = .75, 
+                     arrow = arrow(length = unit(0.2, "inches")),
+                     colour = "black" 
+        ) +
+        coord_fixed()+ # fix proportion between axis units
+        geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
+                  aes(x = ifelse(dbRDA1<0,dbRDA1*1.2,dbRDA1*1.2), # nudge a bit the coordinates so that they're not on the arrows
+                      y = ifelse(dbRDA2<0,dbRDA2*1.2,dbRDA2*1.2),
+                      label = label))+
+        scale_colour_manual(values = color_pool)+
+        theme_classic()+
+        xlab(paste0("dbRDA1 (",eig1,"%)"))+
+        ylab(paste0("dbRDA2 (",eig2,"%)"))+
+        guides(fill="none")  +
+        geom_hline(yintercept=0,linetype = "dashed")+
+        geom_vline(xintercept=0,linetype = "dashed")+
+        ggtitle(formula_tmp)+
+        theme(plot.title = element_text(face="bold"))+
+        coord_fixed()
+}
+```
+
+
+```{r}
+dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+ ph + height + water + gHM + soc +aet_lt+moist_lt+pr_lt+swe_lt+tmmn_lt+tmmx_lt+vap_lt+vpd_lt+evi_lt+fpar_lt+gpp_lt`+
+    dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+ ph + height + water + gHM + soc +aet_st+moist_st+pr_st+swe_st+tmmn_st+tmmx_st+vap_st+vpd_st+evi_st+fpar_st+gpp_st`+
+    plot_layout(guides="collect")
 ```
 
 

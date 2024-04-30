@@ -1,0 +1,31 @@
+```{r}
+test <- read_delim(file = "frogs_inputs/Galaxy165-[FROGS_Affiliation_postprocess__OTU_aggregation_composition.txt].tsv", # read the tsv file
+                   delim = "\t", escape_double = FALSE, 
+                   trim_ws = TRUE,
+                   col_names = F)
+
+test2 <- read_delim(file = "frogs_inputs/Galaxy168-[FROGS_Affiliation_postprocess__OTU_aggregation_composition.txt].tsv", # read the tsv file
+                   delim = "\t", escape_double = FALSE, 
+                   trim_ws = TRUE,
+                   col_names = F)
+
+any(isFALSE(test==test2))
+```
+
+```{r}
+test3 <- read_delim("frogs_inputs/Galaxy169-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
+                   delim = "\t", escape_double = FALSE, 
+                   trim_ws = TRUE)
+
+test4 <- read_delim("frogs_inputs/Galaxy171-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
+                   delim = "\t", escape_double = FALSE, 
+                   trim_ws = TRUE)
+
+any(isFALSE(test3$observation_name==test4$observation_name))
+```
+```{r}
+
+reads_frame <- t(as.matrix(test3[,colnames(test3)[grepl("L001",colnames(test3))]])) # extract site per asvs reads count matrix
+min(colSums(reads_frame))
+```
+
