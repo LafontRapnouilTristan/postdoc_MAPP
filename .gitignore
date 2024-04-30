@@ -7,3 +7,6 @@ data/
 output/
 postdoc_MAPP.Rproj
 *.gexf
+hmsc/
+*.rds
+*.RDara
