@@ -19,6 +19,10 @@ fct_kegg_list <- NULL
 fct_kegg_list$metaD <- fct_kegg[,1:4]
 fct_kegg_list$pseudo_com <- fct_kegg[,5:ncol(fct_kegg)]
 
+# 21591 OTUs -> 7409 genes -> 182 pathways?
+
+
+
 library(magrittr)
 library(dplyr)
 library(ggplot2)
