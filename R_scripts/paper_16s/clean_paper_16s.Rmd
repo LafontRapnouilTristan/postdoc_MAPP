@@ -333,7 +333,7 @@ cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
 ## prepare metabarlist
 
 ```{r}
-data_temp <- read_delim(file = "frogs_inputs/Galaxy169-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
+data_temp <- read_delim(file = "frogs_input/Galaxy169-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
                         delim = "\t", escape_double = FALSE, 
                         trim_ws = TRUE)
 
@@ -2102,16 +2102,52 @@ dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_read
 ```
 
 
-# Picrust2 process
+# Picrust2
+
+## Prepare inputs
+
+Create from R picrust2 inputs
+Galaxy Picrust2 needs a .Biom and .Fasta file.
+
+.Fasta -> sequences and Header
+.Biom -> tougher to create, will create a .Tsv and convert to .Biom within Galaxy
+```{r}
+seqs <- as.list(gsub("s__","",meco_16s_ns$tax_table$sequence))
+names_seqs <- rownames(meco_16s_ns$tax_table)
+seqinr::write.fasta(seqs,names_seqs,"outputs/fasta4picrust2.fasta")
+```
+
+```{r}
+data_temp <- read_delim(file = "frogs_input/Galaxy169-[FROGS_BIOM_to_TSV__abundance.tsv].tsv", # read the tsv file
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE)
+data_temp%<>%
+    filter(observation_name%in%names_seqs)
+write_delim(data_temp,
+            file = "outputs/tsv4picrust.tsv",
+            delim = "\t", )
+```
+
+
 
 
 ## Alignment and stuff
 
 ```{r}
-picrust_closestref <-  read_delim("picrust2/picrust_placeseqs_closests_ref_sequences_tsv.tsv", # read the tsv file
+picrust_closestref <-  read_delim("picrust2/Galaxy177-[FROGSFUNC_1_placeseqs_and_copynumbers__frogsfunc_placeseqs_closests_ref_sequences.txt].tsv", # read the tsv file
                             delim = "\t", escape_double = FALSE, 
                             trim_ws = TRUE)
+```
 
+check ASVs discrepencies between Picrust2 and my cleaned dataset
+```{r}
+nrow(meco_16s_ns$tax_table) #12792 ASVs in my cleaned dataset
+nrow(picrust_closestref) # 21591 ASVs in picrust
+
+all(rownames(meco_16s_ns$tax_table) %in% picrust_closestref$`#ASV`)
+```
+
+```{r}
 picrust_closestref %>%
     ggplot()+
     geom_point(aes(x=NSTI,y=`%cov`,color="darkorange"))+
@@ -2129,7 +2165,7 @@ picrust_closestref %>%
 ```
 
 Clusters with NSTI > 2 are considered poorly represented in the Picrust2 reference database.
-Additionnaly, a coverage < 50% is pretty low 
+Additionnaly, a coverage < 80% is pretty low 
 
 ```{r}
 (picrust_closestref %>%
@@ -2142,37 +2178,74 @@ Additionnaly, a coverage < 50% is pretty low
     ggplot(aes(x=score,y=`%cov`))+
     geom_point())/
     (picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%
+         filter(`%cov`>80&`%id`>80&NSTI<2)%>%
     ggplot(aes(x=score,y=`%id`))+
     geom_point()+
     picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%
+         filter(`%cov`>80&`%id`>80&NSTI<2)%>%
     ggplot(aes(x=`%id`,y=`%cov`))+
     geom_point()+
     picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%
+         filter(`%cov`>80&`%id`>80&NSTI<2)%>%
     ggplot(aes(x=score,y=`%cov`))+
     geom_point())
 ```
 
 ```{r}
 picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%
+    filter(NSTI<2)%>%
+    filter(`%cov`>80&`%id`>80)%>%
     nrow()/nrow(picrust_closestref) # 93% of OTUs
 
 picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%
+    filter(NSTI<2)%>%
+    filter(`%cov`>80&`%id`>80)%>%
     summarise(sum_seq=sum(`Nb sequences`))/sum(picrust_closestref$`Nb sequences`) # Keep 98% of sequences
 ```
 
-I don't have much confidence in these ASVs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out.
+I don't have much confidence in these ASVs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out. 
 
 ```{r}
 asvs_picrust <- picrust_closestref %>%
-         filter(`%cov`>80&`%id`>80)%>%select(`#ASV`)
-asvs_picrust <- asvs_picrust$`#ASV`
+    filter(NSTI<2&`%cov`>80&`%id`>80)%>%
+    select(`#ASV`)
+discarded_picrust <- picrust_closestref %>%
+         filter(!`#ASV`%in%asvs_picrust$`#ASV`)%>%select(`#ASV`)
+
+asvs_picrust <- asvs_picrust$`#ASV` #20179 asvs
+discarded_picrust <- discarded_picrust$`#ASV` # 1412 asvs
 ```
 
+Set cov and Id to 0.8 in galaxy FrogsFunc 2.
+
+Investigate Excluded ASVs and their repartition across my samples.
+297 ASVs are exluded with this filtering
+
+```{r}
+meco_picrust_16s <- clone(meco_16s_ns)
+meco_picrust_16s$tax_table%<>%
+    mutate(is_picrust=ifelse(rownames(.)%in%asvs_picrust,"Yes","No"))%>%
+    mutate(cluster=rownames(.))
+meco_picrust_16s$otu_table%>%
+    mutate(cluster=rownames(.))%>%
+    reshape2::melt()%>%
+    left_join(meco_picrust_16s$tax_table)%>%
+    ggplot(aes(x=variable,y=value,fill=is_picrust))+
+    geom_bar(stat="identity",width = 1)+
+    theme(axis.text.x = element_blank())+
+    ggtitle("Reads of picrust or not OTUs")+
+    scale_y_continuous(expand = c(0,0))+
+    meco_picrust_16s$otu_table%>%
+   mutate(across(everything(), ~ .x/sum(.)))%>%
+    mutate(cluster=rownames(.))%>%
+    reshape2::melt()%>%
+    left_join(meco_picrust_16s$tax_table)%>%
+    ggplot(aes(x=variable,y=value,fill=is_picrust))+
+    geom_bar(stat="identity",width = 1)+
+    theme(axis.text.x = element_blank())+
+    ggtitle("Reads proportion of picrust or not OTUs")+
+    scale_y_continuous(expand = c(0,0))
+```
 
 ```{r}
 meco_16s_picrust2 <- clone(meco_16s)
@@ -2189,7 +2262,7 @@ order_relab_16s_picrust2 <- ab_trans_meco_16s_picrust2$plot_bar(others_color = "
     theme(plot.title = element_text(face='bold'))
 ```
 
-It changes a bit my 
+It changes a bit my community composition?
 
 
 ## Functions and pathways

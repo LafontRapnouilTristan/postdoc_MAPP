@@ -81,8 +81,8 @@ library(vioplot)
 
 
 
-samples_list <- c(5)
-thin_list <- c(1)
+samples_list <- c(5,250,250,250,250)
+thin_list <- c(1,1,10,100,1000)
 nChains <- 4
 nst <- length(thin_list)
 
@@ -111,9 +111,10 @@ while(Lst <= nst){
                                       "_samples_", as.character(samples),
                                       "_chains_",as.character(nChains),
                                       ".Rdata",sep = ""))
-  models <- m_list
+
   if(file.exists(filename)){
     load(filename)
+    models <- m_list
     cat(c("\n",filename,"\n\n"),file=text.file,sep="",append=TRUE)
     nm = length(models)
     for(j in 1:nm){
@@ -222,3 +223,4 @@ if(showOmega & !is.null(ma.omega)){
   vioplot(ma.omega,col=rainbow_hcl(nm),names=na.omega,ylim=c(0.9,1.1),main="psrf(omega)")
 }
 dev.off()
+

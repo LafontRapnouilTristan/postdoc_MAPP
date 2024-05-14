@@ -10,6 +10,10 @@ biom_test <- read_tsv("R_scripts/paper_16s/picrust2/Galaxy198-[FROGS_BIOM_to_TSV
 
 length(unique(fct_kegg$classification))
 
+fct_ec <- read_tsv("R_scripts/paper_16s/picrust2/Galaxy188-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_EC.tsv].tsv")
+path_ec <- read_tsv("R_scripts/paper_16s/picrust2/Galaxy200-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv")
+
+length(unique(fct_ec$classification))
 
 fct_kegg_list <- NULL
 fct_kegg_list$metaD <- fct_kegg[,1:4]
