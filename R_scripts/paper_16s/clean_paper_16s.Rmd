@@ -2108,7 +2108,7 @@ dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_read
 ## Alignment and stuff
 
 ```{r}
-picrust_closestref <-  read_delim("picrust2/picrust_placeseqs_closests_ref_sequences_tsv.tsv", # read the tsv file
+picrust_closestref <-  read_delim("picrust2/Galaxy228-[FROGSFUNC_1_placeseqs_and_copynumbers__frogsfunc_placeseqs_closests_ref_sequences.txt].tsv", # read the tsv file
                             delim = "\t", escape_double = FALSE, 
                             trim_ws = TRUE)
 
