@@ -265,7 +265,7 @@ plottagjump <- ggarrange(plotlist =  plot_tag_jump, ncol = 1,nrow = length(folde
 
 
 ```{r}
-chsn_thrshld <- rep("t_0")
+chsn_thrshld <- rep("t_0") #keep 0 as threshold
 
 for (i in 1:length(folder_names)){
     # Use tag-jump corrected metabarlist with the threshold identified above
@@ -617,7 +617,7 @@ for (i in 1:length(folder_names)){
     data_temp@sam_data$motus_post = rowSums(ifelse(data_temp@otu_table>0, T, F)) # motus per samples
     
     
-    physeqlists[[folder_names[i]]] <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241",data_temp@sam_data$sample_id))
+    physeqlists[[folder_names[i]]] <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241",data_temp@sam_data$sample_id)) # sample from Vincent's experiments
 }
 
 ```
@@ -697,7 +697,7 @@ gc()
 
 tab16s <- t(otu_table(file2meco::meco2phyloseq(meco_16s))) # get the community
 class(tab16s) <- "matrix" # change class
-curve16s <- rarecurve(tab16s) # use vegan rarefaction curves
+curve16s <- rarecurve(tab16s,step=100) # use vegan rarefaction curves
 names(curve16s) <- rownames(tab16s) # name curves after sample IDs
 
 # Coerce data into "long" form.
@@ -724,7 +724,7 @@ rare16s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
 
 tab18s <- t(otu_table(file2meco::meco2phyloseq(meco_18s)))
 class(tab18s) <- "matrix"
-curve18s <- rarecurve(tab18s)
+curve18s <- rarecurve(tab18s,step=100)
 names(curve18s) <- rownames(tab18s)
 
 # Coerce data into "long" form.
@@ -751,7 +751,7 @@ rare18s <- ggplot(xy, aes(x = subsample, y = value, group = samples )) +
 
 tab23s <- t(otu_table(file2meco::meco2phyloseq(meco_23s)))
 class(tab23s) <- "matrix"
-curve23s <- rarecurve(tab23s)
+curve23s <- rarecurve(tab23s,step=100)
 names(curve23s) <- rownames(tab23s)
 
 # Coerce data into "long" form.
@@ -831,7 +831,7 @@ plot_singletons <- plot_singletons_reads/plot_singletons_otus
 ggsave("../Figures/singletons.png",plot_singletons)
 ```
 
-We have only singletons in 16s but ~80% of our OTUs but ~4% of our reads.
+We have only singletons in 16s: ~80% of our OTUs but ~4% of our reads.
 Can this be interpretated as high endemism in peatlands bacteria??
 And loads of rare strains? 
 We are working at low resolution with SWARM clustering, increasing singletons.
