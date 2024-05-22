@@ -1599,7 +1599,7 @@ pca_sites <- (pca_site_biplot$pca_sites_lt+scree_plot_list$pca_sites_lt)/
 ggsave("Figures/pca_sites.png",pca_sites,width = 21/2.54 ,height= 29.7/2.54)
 ```
 
-# Save data sets for Hmsc 
+# Save cleaned datasets
 
 I need meco_16s_ns which is our communities with no singletons.
 I need site data that are imputed.
@@ -1629,8 +1629,84 @@ load("outputs/meco_16s.RData")
 load("outputs/site_data_imputed.RDS")
 ```
 
+```{r}
+country_color <- c('#e6194b',
+                   '#3cb44b',
+                   '#ffe119',
+                   '#4363d8',
+                   '#f58231', 
+                   '#911eb4', 
+                   '#46f0f0',
+                   '#f032e6', 
+                   '#bcf60c',
+                   '#fabebe', 
+                   '#008080', 
+                   '#e6beff', 
+                   '#9a6324',
+                   '#fffac8',
+                   '#800000', 
+                   '#aaffc3',
+                   '#808000',
+                   '#ffd8b1', 
+                   '#000075',
+                   '#808080', 
+                   '#ffffff',
+                   '#000000')
+```
+
 
 # 16s and sites relations
+
+## Alpha div patterns
+
+```{r}
+meco_16s_ns$sample_table%>%
+  ggplot(aes(x=X,y=nb_asvs))+
+  geom_point()+
+  theme_classic2()+
+  labs(x="Latitude",y="Richness")+
+meco_16s_ns$sample_table%>%
+  ggplot(aes(x=Y,y=nb_asvs))+
+  geom_point()+
+  theme_classic2()+
+  labs(x="Longitude",y="Richness")
+meco_16s_ns$sample_table%<>%left_join(combined)
+
+meco_16s_ns$sample_table%>%
+  ggplot(aes(x=Country,y=nb_asvs,color=Country))+
+  geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()+
+  labs(x="Country",y="Richness")+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Subset the world data to include only the specified latitude range
+cropping <- as(raster::extent(-180, 180, 28, 90), "SpatialPolygons")
+
+
+world_subset <- raster::crop(as_Spatial(world),cropping)
+# Create a Lambert azimuthal equal-area projection centered on the North Pole
+lambert_proj <- st_crs("+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
+world_lambert <- st_transform(st_as_sf(world_subset), crs = lambert_proj)
+
+
+(sites <- st_as_sf(meco_16s_ns$sample_table, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+# Plot the map
+ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data = sites, size = 3, shape = 23, aes(fill = nb_asvs),alpha=.7) +
+  ggtitle("MAPP 16s sites") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))+
+  scale_fill_viridis_c(limits = c(150, 1900), oob = scales::squish)
+```
+
 
 ## LMM
 
@@ -1876,9 +1952,11 @@ meco_picrust_16s$otu_table%>%
 ```
 
 ```{r}
+rownames(meco_16s_ns$sample_table) <- meco_16s_ns$sample_table$sample_id
 meco_16s_picrust2 <- clone(meco_16s_ns)
 
 meco_16s_picrust2$otu_table %<>% filter(rownames(.)%in%asvs_picrust)
+
 meco_16s_picrust2$tidy_dataset()
 ```
 
@@ -1943,6 +2021,7 @@ galaxy_Xcluded$`#Cluster` %in% discarded_picrust
 
 setdiff(discarded_picrust,galaxy_Xcluded$`#Cluster`) 
 ```
+
 ```{r}
 picrust_closestref%>%
   filter(`#ASV`%in%setdiff(discarded_picrust,galaxy_Xcluded$`#Cluster`)) #difference due to 80% ID. Frogs on Galaxy is likely conservative while I specified "Strictly Inferior to .8"
@@ -1983,28 +2062,6 @@ amino_color <- c("#4e8937",
                  "#cf8c70",
                  "#78334b",
                  "#d0849f")
-country_color <- c('#e6194b',
-                   '#3cb44b',
-                   '#ffe119',
-                   '#4363d8',
-                   '#f58231', 
-                   '#911eb4', 
-                   '#46f0f0',
-                   '#f032e6', 
-                   '#bcf60c',
-                   '#fabebe', 
-                   '#008080', 
-                   '#e6beff', 
-                   '#9a6324',
-                   '#fffac8',
-                   '#800000', 
-                   '#aaffc3',
-                   '#808000',
-                   '#ffd8b1', 
-                   '#000075',
-                   '#808080', 
-                   '#ffffff',
-                   '#000000')
 ```
 
 
@@ -2260,30 +2317,6 @@ metacyc_files$picrust_pathway_unstrat%>%
 
 ```
 
-
-
-
-
-```{r}
-ordi_pth <- d_tmp$picrust_pathway_unstrat%>%
-  select(c(which(names(.)%in%combined$Sample)))%>%
-  t()%>%
-  metaMDS()
-
-df_ordi_pth_sites <- ordi_pth$points
-df_ordi_pth_sites %<>%
-  as.data.frame()%>%
-  mutate(Sample=rownames(.))%>%
-  left_join(combined)
-
-ggplot(df_ordi_pth_sites,aes(x=MDS1,y=MDS2,label = Sample,color=Country))+
-  geom_point()+
-  theme_dark()+
-  scale_color_manual(values=country_color)
-
-```
-
-
 ```{r}
 plot_pth <- NULL
 ordiplot_pth <- NULL
@@ -2360,4 +2393,9 @@ for(i in pathways_db){
     # geom_text()+
     scale_color_manual(values=country_color)
 }
-``
+```
+
+
+### Xplore diversity within picrust2
+
+
