@@ -1827,6 +1827,9 @@ data_temp <- read_delim(file = "frogs_input/Galaxy169-[FROGS_BIOM_to_TSV__abunda
                         trim_ws = TRUE)
 data_temp%<>%
     filter(observation_name%in%names_seqs)
+
+data_temp <- data_temp[,c(1:12,which(colnames(data_temp)%in%meco_16s_ns$sample_table$sample_id))] 
+
 write_delim(data_temp,
             file = "outputs/tsv4picrust.tsv",
             delim = "\t", )
@@ -2257,7 +2260,6 @@ metacyc_files[["picrust_pathway_unstrat"]] <- read_delim("picrust2/Galaxy244-[FR
                                                          delim = "\t", escape_double = F, trim_ws = T)
 ```
 
-
 ```{r}
 names(kegg_files$picrust_pathway_unstrat)[grepl("L001",names(kegg_files$picrust_pathway_unstrat))] <- gsub("[A-Z]|-|(?=_).*","",names(kegg_files$picrust_pathway_unstrat)[grepl("L001",names(kegg_files$picrust_pathway_unstrat))] ,perl = T)
 
@@ -2398,4 +2400,58 @@ for(i in pathways_db){
 
 ### Xplore diversity within picrust2
 
-
+```{r}
+abfct_plots <- NULL
+cntfct_plots <- NULL
+mapfct_plots <- NULL
+for(i in pathways_db){
+  if(i == "Kegg"){
+    d_tmp <- kegg_files
+  }else{
+    d_tmp <- metacyc_files
+  }
+  names(d_tmp$picrust_fct_unstrat)[grepl("L001",names(d_tmp$picrust_fct_unstrat))] <- gsub("[A-Z]|-|(?=_).*","",names(d_tmp$picrust_fct_unstrat)[grepl("L001",names(d_tmp$picrust_fct_unstrat))] ,perl = T)
+  
+  abfct_plots[[i]] <- d_tmp$picrust_fct_unstrat%>%
+    select(5:ncol(.))%>%
+    summarise(across(.cols=1:ncol(.),.fns=sum))%>%
+    reshape2::melt()%>%
+    rename(Sample=variable)%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=value,color=Country))+
+    geom_jitter()+
+    scale_color_manual(values=country_color)+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=90))
+  
+  cntfct_plots[[i]] <- d_tmp$picrust_fct_unstrat%>%
+    select(5:ncol(.))%>%
+    summarise(across(.cols=1:ncol(.),.fns=~sum(.x>0)))%>%
+    reshape2::melt()%>%
+    rename(Sample=variable)%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=value,color=Country))+
+    geom_jitter()+
+    scale_color_manual(values=country_color)+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=90))  
+  
+  (sites <- st_as_sf(d_tmp$picrust_fct_unstrat%>%
+                       select(5:ncol(.))%>%
+                       summarise(across(.cols=1:ncol(.),.fns=~sum(.x>0)))%>%
+                       reshape2::melt()%>%
+                       rename(Sample=variable)%>%
+                       left_join(combined)%>%filter(X!="NA"), coords = c("X", "Y"), 
+                     crs = 4326, agr = "constant"))
+  
+  # Plot the map
+  mapfct_plots[[i]] <- ggplot() +
+    geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+    geom_sf(data = sites, size = 3, shape = 23, aes(fill = value),alpha=.7) +
+    ggtitle("MAPP 16s sites") +
+    theme(plot.title = element_text(hjust = 0.5, size = 16))+
+    theme_minimal()+
+    theme(panel.background = element_rect(fill = "azure"))+
+    scale_fill_viridis_c()
+}
+```
