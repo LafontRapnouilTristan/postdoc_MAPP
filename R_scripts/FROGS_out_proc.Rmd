@@ -453,8 +453,6 @@ plotnoisemotu <- ggarrange(plotlist =  plot_noise_motu, ncol = 1,nrow = length(f
 ```
 
 
-
-
 ### Filter 
 
 
@@ -509,10 +507,7 @@ for (i in 1:length(folder_names)){
 }
 ```
 
-
-
 ### Check effect of filter on reads and richness
-
 
 ```{r}
 motu_read_plots_post <- NULL 
@@ -564,12 +559,9 @@ Will depend on questions (test link between bioclimatic/geographical variables a
 Differential abundance implementation in this models.
 
 
-
-
 ## Data wrangling
 
 ### Transform to physeq lists
-
 
 ```{r}
 physeqlists <- NULL
