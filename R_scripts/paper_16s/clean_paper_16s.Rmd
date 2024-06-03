@@ -2392,7 +2392,6 @@ for(i in pathways_db){
   ordiplot_pth[[i]] <- ggplot(df_ordi_pth_sites,aes(x=MDS1,y=MDS2,label = Sample,color=Country))+
     geom_point()+
     theme_dark()+
-    # geom_text()+
     scale_color_manual(values=country_color)
 }
 ```
@@ -2455,3 +2454,241 @@ for(i in pathways_db){
     scale_fill_viridis_c()
 }
 ```
+
+# Procrustes
+
+```{r}
+ordi_16s <- meco_16s_ns$otu_table%>%
+  t()%>%
+  labdsv::hellinger()%>%
+  metaMDS(distance = "horn") # MDS on 16s communities
+
+ordi_metacyc <- metacyc_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    metaMDS(distance = "horn")
+
+ordi_kegg <- kegg_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    metaMDS(distance = "horn")
+
+procrustes_res_16kegg <- vegan::procrustes(ordi_16s,ordi_kegg,symmetric = T)
+procrustes_res_16meta <- vegan::procrustes(ordi_16s,ordi_metacyc,symmetric = T)
+procrustes_res_metakegg <- vegan::procrustes(ordi_metacyc,ordi_kegg,symmetric = T)
+procrustes_list <- c("procrustes_res_16kegg","procrustes_res_16meta","procrustes_res_metakegg")
+
+procrustes_plots <- NULL
+for(i in procrustes_list){
+ procrustes_tmp <- get(i)
+ 
+ 
+ ctest <- data.frame(nmds1=procrustes_tmp$Yrot[,1],
+                     nmds2=procrustes_tmp$Yrot[,2],
+                     xnmds1=procrustes_tmp$X[,1],
+                     xnmds2=procrustes_tmp$X[,2])
+ 
+ pro.error <- data.frame(err=residuals(procrustes_tmp),sam_id=meco_16s_ns$sample_table$Sample)
+ quantiles <- quantile(pro.error$err,probs = c(0.25,0.50,0.75))
+ 
+ procrustes_plots[[i]] <- ggplot(ctest) +
+   geom_point(aes(x=nmds1, y=nmds2)) +
+   geom_point(aes(x=xnmds1, y=xnmds2)) +
+   geom_segment(aes(x=nmds1,y=nmds2,xend=xnmds1,yend=xnmds2),arrow=arrow(length=unit(0.2,"cm")))+
+   coord_fixed()+
+   theme_classic2()+
+   ggplot(pro.error,aes(x = sam_id, y=err))+
+   ggtitle(i)+
+   geom_bar(stat='identity',width = 1)+
+   geom_hline(yintercept = quantiles[1],linetype="dashed")+
+   geom_hline(yintercept = quantiles[2])+
+   geom_hline(yintercept = quantiles[3],linetype="dashed")+
+   theme_classic2()+
+   theme(axis.text.x = element_text(angle=90))+
+   xlab("site row")+
+   ylab("Residual fit")+ 
+   plot_layout(widths = c(1.4,1.6))
+}
+```
+
+
+```{r}
+meco_16s_relabfiltered <- clone(meco_16s_ns) # clone
+tmp_com <- meco_16s_ns$otu_table%>%
+  mutate(across(everything(),.fns=~./sum(.))) # create a relative abundance matrix
+
+
+filt_05pct <- tmp_com%>%
+  t()%>%
+  as.data.frame() %>%
+  select_if(~max(.)>0.005) # 0.5% threshold. ASVs need to represent more than 0.5% of the community reads in at least one sample.
+
+
+meco_16s_relabfiltered$otu_table%<>%filter(rownames(meco_16s_relabfiltered$otu_table)%in%colnames(filt_05pct)) # get OTUs that match the threshold
+meco_16s_relabfiltered$tidy_dataset() # filter datasets
+
+meco_16s_relabfiltered$sample_table$nb_reads <- colSums(meco_16s_relabfiltered$otu_table) # count reads
+meco_16s_relabfiltered$sample_table$nb_motus <- colSums(meco_16s_relabfiltered$otu_table>0) # count motus
+
+read_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=nb_reads,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+asvs_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=nb_motus,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+cor_read_asv_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=nb_reads,y=nb_motus,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+
+mds_filtered <- meco_16s_relabfiltered$otu_table%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::metaMDS(distance= "horn")
+
+mds_plot <- mds_filtered$points%>%
+    as.data.frame()%>%
+    mutate(Sample = gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
+    left_join(combined)%>%
+    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
+    geom_point()+
+    ggtitle("822 asvs")+
+    ordi_16s$points%>%
+    as.data.frame()%>%
+    mutate(Sample =gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
+    left_join(combined)%>%
+    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
+    geom_point()+
+    ggtitle("12792 asvs")
+
+
+procrustes_res <- vegan::procrustes(mds_filtered,ordi_16s, symmetric = T)
+
+procrustes_res
+
+ctest <- data.frame(nmds1=procrustes_res$Yrot[,1],
+                    nmds2=procrustes_res$Yrot[,2],
+                    xnmds1=procrustes_res$X[,1],
+                    xnmds2=procrustes_res$X[,2])
+ctest$Country <- combined$Country[match(gsub("[A-Z]|-|(?=_).*","",rownames(ctest),perl = T),combined$Sample)]
+pro.error <- data.frame(err=residuals(procrustes_res),Sample=meco_16s_ns$sample_table$Sample)%>%
+  left_join(combined)
+quantiles <- quantile(pro.error$err,probs = c(0.25,0.50,0.75))
+ggplot(ctest) +
+  geom_point(aes(x=nmds1, y=nmds2,color=Country)) +
+  geom_point(aes(x=xnmds1, y=xnmds2,color=Country)) +
+  geom_segment(aes(x=nmds1,y=nmds2,xend=xnmds1,yend=xnmds2),arrow=arrow(length=unit(0.2,"cm")))+
+  coord_fixed()+
+  theme_classic2()+
+  scale_color_manual(values=country_color)+
+  theme(legend.position = "n")+
+  ggplot(pro.error,aes(x = Sample, y=err,fill = Country))+
+  geom_bar(stat='identity',width = 1)+
+  geom_hline(yintercept = quantiles[1],linetype="dashed")+
+  geom_hline(yintercept = quantiles[2])+
+  geom_hline(yintercept = quantiles[3],linetype="dashed")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  xlab("site row")+
+  ylab("Residual fit")+ 
+  plot_layout(widths = c(1.4,1.6))+
+  scale_fill_manual(values=country_color)+
+  scale_y_continuous(expand = c(0,0))
+
+```
+
+
+```{r}
+ordi_metacyc_hell <- metacyc_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    metaMDS(distance = "horn")
+
+ordi_kegg_hell <- kegg_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    metaMDS(distance = "horn")
+
+
+
+procrustes_cor <- c(protest(X = mds_filtered, Y = ordi_16s, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_16s, Y = ordi_kegg, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_16s, Y = ordi_metacyc, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_metacyc, Y = ordi_kegg, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_metacyc_hell, Y = ordi_metacyc, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_kegg_hell, Y = ordi_kegg, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_metacyc_hell, Y = ordi_kegg_hell, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_16s, Y = ordi_kegg_hell, scores = "sites", permutations = 999)$t0,
+                       protest(X = ordi_16s, Y = ordi_metacyc_hell, scores = "sites", permutations = 999)$t0)
+
+names(procrustes_cor) <- c("full_vs_filtered",
+                           "16s_kegg",
+                           "16s_metacyc",
+                           "metacyc_kegg",
+                           "metacyc_hell_nohell",
+                           "kegg_hell_nohell",
+                           "metacyc_kegg_hell",
+                           "16s_kegghell",
+                           "16s_metacychell")
+
+cor_procrustes_df <- data.frame(procrustes_cor=procrustes_cor,
+                                type_procor=names(procrustes_cor))
+
+
+
+
+cor_procrustes_df%>%
+  ggplot(aes(x=type_procor,y=procrustes_cor,fill=type_procor))+
+  geom_bar(stat="identity")+
+  theme_classic2()+
+  theme(axis.text.x = element_text(angle=45,hjust = 1))+
+  scale_fill_manual(values=country_color)+
+  scale_y_continuous(expand=c(0,0),limits = c(0,1))
+```
+
+```{r}
+d_full <- meco_16s_ns$otu_table%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::vegdist(method = "horn")
+
+
+d_filt <- meco_16s_relabfiltered$otu_table%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::vegdist(method = "horn")
+
+d_metacyc <- metacyc_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::vegdist(method = "horn")
+
+
+d_kegg <- kegg_files$picrust_fct_unstrat%>%
+    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::vegdist(method = "horn")
+
+
+mantel(xdis = d_full,
+       ydis = d_filt)
+
+mantel(xdis = d_metacyc,
+       ydis = d_kegg)
+```
+
