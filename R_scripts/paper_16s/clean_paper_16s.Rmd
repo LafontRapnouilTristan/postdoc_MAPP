@@ -2692,3 +2692,82 @@ mantel(xdis = d_metacyc,
        ydis = d_kegg)
 ```
 
+# Cluster site
+
+```{r}
+selected <- c( "kl", "ch", "hartigan",  "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "gap", "frey", "mcclain", "gamma", "gplus", "tau", "dunn", "hubert", "sdindex", "dindex", "sdbw")
+
+results_nbclust <- NULL
+for (i in 1:length(selected)) {
+    
+    results_nbclust[[i]] <- try(NbClust(data = t(meco_16s_ns$otu_table),
+                                        diss = comu_dissimilarity,
+                                        min.nc=2,
+                                        max.nc=15, 
+                                        method="kmeans",
+                                        index=selected[i]))
+    
+}
+
+nb_clust_com <- fviz_nbclust_fixed(nb_com)
+
+best_part_com <- nb_com$Best.partition
+
+
+site_best_part %<>% mutate(bp_com=as.factor(best_part_com))
+
+(sites <- st_as_sf(site_best_part, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+map_com_best_part <- (ggplot() +
+                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_com),alpha=.7) +
+                          ggtitle("Site clustering 16s communities") +
+                          theme_minimal()+
+                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
+                          theme(panel.background = element_rect(fill = "azure"))+
+                          scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition"))
+map_com_best_part
+       
+clust_heatmap <- site_best_part%>%
+    select(grep("Sample|bp_",colnames(.)))%>%
+    melt("Sample")%>%
+    mutate(variable=fct_relevel(variable,"bp_xy","bp_lt","bp_com","bp_st_bef","bp_st_aft"))%>%
+    ggplot(aes(x=variable,y=Sample,fill=value))+
+    geom_tile()+
+    scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition")+
+    scale_y_discrete(limits=rev)+
+    theme_minimal()+
+    site_data%>%
+    select(c(Country,Sample))%>%
+    ggplot(aes(x="Country",y=Sample,fill=Country))+
+    geom_tile()+
+    theme_void()+
+    scale_fill_manual(values=c("#7f61d3",
+                               "#84b83a",
+                               "#be4eb2",
+                               "#4db955",
+                               "#d54272",
+                               "#6abf87",
+                               "#d14b33",
+                               "#3fc1bf",
+                               "#d99037",
+                               "#616bba",
+                               "#b8af3d",
+                               "#c387d1",
+                               "#5a8233",
+                               "#dd81a0",
+                               "#37835d",
+                               "#9a4769",
+                               "#c6a96d",
+                               "#619dd7"),
+                      name="Country")+
+    plot_layout(guides="collect",widths = c(5,1))
+
+
+ggsave("Figures/cluster_heatmaps.png",clust_heatmap,height = 28.7/2.54)
+ 
+site_best_part$bp_st_aft==site_best_part$bp_com
+ 
+```
+
