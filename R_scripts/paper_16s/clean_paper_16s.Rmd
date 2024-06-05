@@ -1152,6 +1152,14 @@ plot_data2%>%
 
 Still some highly suspicious ASVs.
 
+## Heatmaps
+
+```{r}
+
+```
+
+
+
 
 # Sites
 
@@ -2695,50 +2703,56 @@ mantel(xdis = d_metacyc,
 # Cluster site
 
 ```{r}
-selected <- c( "kl", "ch", "hartigan",  "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "gap", "frey", "mcclain", "gamma", "gplus", "tau", "dunn", "hubert", "sdindex", "dindex", "sdbw")
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
 
-results_nbclust <- NULL
-for (i in 1:length(selected)) {
-    
-    results_nbclust[[i]] <- try(NbClust(data = t(meco_16s_ns$otu_table),
-                                        diss = comu_dissimilarity,
-                                        min.nc=2,
-                                        max.nc=15, 
-                                        method="kmeans",
-                                        index=selected[i]))
-    
-}
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
 
-nb_clust_com <- fviz_nbclust_fixed(nb_com)
+var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
+var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
 
-best_part_com <- nb_com$Best.partition
+results_nbclust_lt <- NbClust::NbClust(scale(combined[c("ph",var_lt)]), distance = 'euclidean',method = "ward.D2")
+results_nbclust_st <- NbClust::NbClust(scale(combined[c("ph",var_st)]), distance = 'euclidean',method = "ward.D2")
 
+site_bp <- combined
+site_bp %<>% mutate(bp_lt = as.factor(results_nbclust_lt$Best.partition),
+                    bp_st = as.factor(results_nbclust_st$Best.partition))
 
-site_best_part %<>% mutate(bp_com=as.factor(best_part_com))
-
-(sites <- st_as_sf(site_best_part, coords = c("X", "Y"), 
+(sites <- st_as_sf(site_bp, coords = c("X", "Y"), 
                    crs = 4326, agr = "constant"))
 
-map_com_best_part <- (ggplot() +
+map_com_best_part_lt <- (ggplot() +
                           geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_com),alpha=.7) +
-                          ggtitle("Site clustering 16s communities") +
+                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_lt),alpha=.7) +
+                          ggtitle("Site clustering satellite data LT") +
                           theme_minimal()+
                           theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
                           theme(panel.background = element_rect(fill = "azure"))+
                           scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition"))
-map_com_best_part
-       
-clust_heatmap <- site_best_part%>%
+
+map_com_best_part_st <- (ggplot() +
+                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_st),alpha=.7) +
+                          ggtitle("Site clustering satellite data ST") +
+                          theme_minimal()+
+                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
+                          theme(panel.background = element_rect(fill = "azure"))+
+                          scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition"))
+
+map_com_best_part_lt+map_com_best_part_st
+```
+
+```{r}
+clust_heatmap <- site_bp%>%
     select(grep("Sample|bp_",colnames(.)))%>%
     melt("Sample")%>%
-    mutate(variable=fct_relevel(variable,"bp_xy","bp_lt","bp_com","bp_st_bef","bp_st_aft"))%>%
+    mutate(variable=fct_relevel(variable,"bp_lt","bp_st"))%>%
     ggplot(aes(x=variable,y=Sample,fill=value))+
     geom_tile()+
-    scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition")+
+    scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition")+
     scale_y_discrete(limits=rev)+
     theme_minimal()+
-    site_data%>%
+    combined%>%
     select(c(Country,Sample))%>%
     ggplot(aes(x="Country",y=Sample,fill=Country))+
     geom_tile()+
@@ -2766,8 +2780,208 @@ clust_heatmap <- site_best_part%>%
 
 
 ggsave("Figures/cluster_heatmaps.png",clust_heatmap,height = 28.7/2.54)
- 
-site_best_part$bp_st_aft==site_best_part$bp_com
- 
+```
+
+
+# Spls Mixomics
+
+```{r}
+data_tmp <- meco_16s_ns
+data_tmp <- clone(data_tmp)
+mixomics_com <- t(data_tmp$otu_table)
+library(mixOmics)
+for(i in c("lt","st")){
+  
+  mixomics_com <- mixomics_com[,which(colSums(mixomics_com!=0)!=1)] # remove samplewise singletons
+  
+  group_plot <- site_bp[,which(colnames(site_bp)==paste0("bp_",i))]
+  
+  
+  mydata <- list(df1 = combined[c("ph",var_lt)],
+                 df2 = mixomics_com) #Here you build your two datasets that should be integrated
+  
+  X <- mydata$df1 # use the gene expression data as the X matrix
+  Y <- mydata$df2 # use the clinical data as the Y matrix
+  
+  dim(X) # check the dimensions of the X dataframe
+  dim(Y)
+  
+  pca.X <- pca(X, ncomp = 10, center = TRUE, scale = TRUE)
+  pca.Y <- pca(Y, ncomp = 10, center = TRUE, scale = TRUE)
+  
+  compX <- plot(pca.X)
+  compY <- plot(pca.Y)
+  
+  
+  indX <- plotIndiv(pca.X, comp = c(1, 2), 
+                    group = group_plot, 
+                    legend = TRUE, title = 'traits, PCA comp 1 - 2')
+  
+  indY <- plotIndiv(pca.Y, comp = c(1, 2), 
+                    group = group_plot, 
+                    legend = TRUE, title = 'mubiota, PCA comp 1 - 2')
+  
+  spls.holo <- spls(X = X, Y = Y, ncomp = 5, mode = 'regression')
+  # repeated CV tuning of component count
+  perf.spls.holo <- perf(spls.holo, validation = 'Mfold',
+                         folds = 10, nrepeat = 5) 
+  
+  perfplot <- plot(perf.spls.holo, criterion = 'Q2.total')
+  
+  
+  
+  # set range of test values for number of variables to use from X dataframe
+  list.keepX <- c(1:18)
+  # set range of test values for number of variables to use from Y dataframe
+  list.keepY <- c(1:ncol(Y)) 
+  
+  
+  tune.spls.holo <- tune.spls(X, Y, ncomp = 2,
+                              test.keepX = list.keepX,
+                              test.keepY = list.keepY,
+                              nrepeat = 1, folds = 10, # use 10 folds
+                              mode = 'regression', measure = 'cor') 
+  tuneplot <- plot(tune.spls.holo)         # use the correlation measure for tuning
+  
+  # extract optimal number of variables for X dataframe
+  optimal.keepX <- tune.spls.holo$choice.keepX 
+  
+  # extract optimal number of variables for Y datafram
+  optimal.keepY <- tune.spls.holo$choice.keepY
+  
+  optimal.ncomp <-  length(optimal.keepX) # extract optimal number of components
+  
+  # use all tuned values from above
+  final.spls.holo <- spls(X, Y, ncomp = optimal.ncomp, 
+                          keepX = optimal.keepX,
+                          keepY = optimal.keepY,
+                          mode = "regression") # explanitory approach being used, 
+  # hence use regression mode
+  
+  
+  findX <- plotIndiv(final.spls.holo, ind.names = FALSE, 
+                     rep.space = "X-variate", # plot in X-variate subspace
+                     group =group_plot, # colour by time group
+                     pch = as.factor(group_plot), 
+                     col.per.group = color.mixo(1:6), 
+                     legend = TRUE, legend.title = 'Cluster', legend.title.pch = 'Cluster')
+  
+  findY <- plotIndiv(final.spls.holo, ind.names = FALSE,
+                     rep.space = "Y-variate", # plot in Y-variate subspace
+                     group = group_plot, # colour by time group
+                     pch = as.factor(group_plot), 
+                     col.per.group = color.mixo(1:6), 
+                     legend = TRUE, legend.title = 'Cluster', legend.title.pch = 'Cluster')
+  
+  
+  findXY <- plotIndiv(final.spls.holo, ind.names = FALSE, 
+                      rep.space = "XY-variate", # plot in averaged subspace
+                      group = group_plot, # colour by time group
+                      pch = as.factor(group_plot), # select symbol
+                      col.per.group = color.mixo(1:6),                      # by dose group
+                      legend = TRUE, legend.title = 'Cluster', legend.title.pch = 'Cluster')
+  
+  
+  farrow <- plotArrow(final.spls.holo, ind.names = FALSE,
+                      group = group_plot, # colour by time group
+                      col.per.group = color.mixo(1:6),
+                      legend.title = 'Cluster')
+  
+  # form new perf() object which utilises the final model
+  perf.spls.holo <- perf(final.spls.holo, 
+                         folds = 7, nrepeat = 10, # use repeated cross-validation
+                         validation = "Mfold", 
+                         dist = "max.dist",  # use max.dist measure
+                         progressBar = FALSE)
+  
+  kept_motus <- final.spls.holo$loadings$Y%>%as.data.frame()%>%filter(comp1!=0|comp2!=0)%>%rownames(.)
+  
+  stabX <- as.data.frame(perf.spls.holo$features$stability.X)%>%
+    mutate(features=rownames(.))%>%
+    reshape2::melt()
+  stabY <- as.data.frame(perf.spls.holo$features$stability.Y)%>%
+    mutate(features=rownames(.))%>%
+    reshape2::melt()%>%
+    filter(features%in%kept_motus)
+  
+  stabX_plot <- ggplot(stabX,aes(x=reorder(features,-value),y=value))+
+    geom_bar(stat="identity")+
+    facet_wrap(.~variable)+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
+    scale_y_continuous(expand=c(0,0))+
+    ggtitle("X features")
+  
+  stabY_plot <- ggplot(stabY,aes(x=reorder(features,-value),y=value))+
+    geom_bar(stat="identity")+
+    facet_wrap(.~variable)+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
+    scale_y_continuous(expand=c(0,0))+
+    ggtitle("Y features")
+  
+  plot_stabz <- stabX_plot/stabY_plot
+  
+  corcirvar <- plotVar(final.spls.holo, cex = c(3,4), var.names = c(FALSE, TRUE))
+  corcirvar%<>%
+    mutate(names=rownames(.))
+  corcirplot <- 
+    ggplot(corcirvar,mapping=aes(x=x,y=y,color=Block,label=names))+
+    geom_point()+
+    ggrepel::geom_text_repel(max.overlaps = 15)+
+    xlim(c(-1,1))+
+    ylim(c(-1,1))+
+    geom_vline(xintercept = 0,linetype="dashed")+
+    geom_hline(yintercept = 0,linetype="dashed")+
+    theme_classic2()+
+    ggforce::geom_circle(aes(x0=0,y0=0,r=.5),color="black")+
+    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
+    scale_color_manual(values = c("aquamarine3","darkorange2"))
+  
+  
+  finmiomix <- plot_stabz+corcirplot
+  
+  heatmap_data_mixom <- cim(final.spls.holo, comp = 1:2, xlab = "clinic", ylab = "genes")
+  
+  
+  p1tmp <- (ggdendro::ggdendrogram(heatmapmixom$ddc)+
+              theme(axis.text.x = element_blank(),
+                    axis.text.y = element_blank()))/
+    ( heatmapmixom$mat%>%
+        as.data.frame()%>%
+        mutate(plant_traits=rownames(.))%>%
+        mutate(plant_traits=fct_relevel(plant_traits,c(heatmapmixom$row.names)))%>%
+        reshape2::melt()%>%
+        mutate(variable=fct_relevel(variable,c(heatmapmixom$col.names)))%>%
+        ggplot(aes(y=plant_traits,x=variable,fill=value))+
+        geom_tile()+
+        theme(axis.text.x = element_text(angle = 90),
+              panel.background = element_blank(),
+              legend.position = "right"))+
+    plot_layout(heights = c(2,6))
+  
+  p2tmp <- (plot_spacer())/(ggdendro::ggdendrogram(heatmapmixom$ddr)+
+                              theme(axis.text.y=element_blank(),axis.text.x=element_blank())+
+                              coord_flip())+
+    plot_layout(heights = c(2.5,6))
+  
+  
+  hmap_mixom <- (p1tmp|p2tmp)+plot_layout(widths = c(6,2),guides="collect")
+  
+  mixomics_plotlists[[i]][["compX"]] <- compX
+  mixomics_plotlists[[i]][["compY"]] <- compY
+  mixomics_plotlists[[i]][["indX"]] <- indX
+  mixomics_plotlists[[i]][["indY"]] <- indY
+  mixomics_plotlists[[i]][["perfplot"]] <- perfplot
+  mixomics_plotlists[[i]][["tuneplot"]] <- tuneplot
+  mixomics_plotlists[[i]][["optX"]] <- optimal.keepX
+  mixomics_plotlists[[i]][["optY"]] <- optimal.keepY
+  mixomics_plotlists[[i]][["findX"]] <- findX
+  mixomics_plotlists[[i]][["findY"]] <- findY
+  mixomics_plotlists[[i]][["findXY"]] <- findXY
+  mixomics_plotlists[[i]][["farrow"]] <- farrow
+  mixomics_plotlists[[i]][["finmiomix"]] <- finmiomix
+  mixomics_plotlists[[i]][["hmap_mixom"]] <- hmap_mixom
+}
 ```
 
