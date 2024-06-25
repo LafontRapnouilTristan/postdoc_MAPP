@@ -1152,14 +1152,6 @@ plot_data2%>%
 
 Still some highly suspicious ASVs.
 
-## Heatmaps
-
-```{r}
-
-```
-
-
-
 
 # Sites
 
@@ -1607,6 +1599,7 @@ pca_sites <- (pca_site_biplot$pca_sites_lt+scree_plot_list$pca_sites_lt)/
 ggsave("Figures/pca_sites.png",pca_sites,width = 21/2.54 ,height= 29.7/2.54)
 ```
 
+
 # Save cleaned datasets
 
 I need meco_16s_ns which is our communities with no singletons.
@@ -1623,7 +1616,8 @@ combined <- site_data_st_before_imputation_imputed%>%
     left_join(site_data[,1:4])%>%
     relocate(Sample)
 
-
+combined%<>%
+    mutate(ph=ph/100)
 # save.image(file='outputs/preproc_myenv.RData')
 save(meco_16s_ns,file = "outputs/meco_16s.RData")
 save(combined,file = "outputs/site_data_imputed.RDS")
@@ -1663,7 +1657,142 @@ country_color <- c('#e6194b',
 ```
 
 
+# Cluster site
+
+```{r}
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
+
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+
+var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
+var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
+
+results_nbclust_lt <- NbClust::NbClust(scale(combined[c("ph",var_lt)]), distance = 'euclidean',method = "ward.D2")
+results_nbclust_st <- NbClust::NbClust(scale(combined[c("ph",var_st)]), distance = 'euclidean',method = "ward.D2")
+
+site_bp <- combined
+site_bp %<>% mutate(bp_lt = as.factor(results_nbclust_lt$Best.partition),
+                    bp_st = as.factor(results_nbclust_st$Best.partition))
+
+(sites <- st_as_sf(site_bp, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+map_com_best_part_lt <- (ggplot() +
+                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_lt),alpha=.7) +
+                          ggtitle("Site clustering satellite data LT") +
+                          theme_minimal()+
+                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
+                          theme(panel.background = element_rect(fill = "azure"))+
+                          scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition"))
+
+map_com_best_part_st <- (ggplot() +
+                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_st),alpha=.7) +
+                          ggtitle("Site clustering satellite data ST") +
+                          theme_minimal()+
+                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
+                          theme(panel.background = element_rect(fill = "azure"))+
+                          scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition"))
+
+map_com_best_part_lt+map_com_best_part_st
+```
+
+```{r}
+clust_heatmap <- site_bp%>%
+    select(grep("Sample|bp_",colnames(.)))%>%
+    melt("Sample")%>%
+    mutate(variable=fct_relevel(variable,"bp_lt","bp_st"))%>%
+    ggplot(aes(x=variable,y=Sample,fill=value))+
+    geom_tile()+
+    scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition")+
+    scale_y_discrete(limits=rev)+
+    theme_minimal()+
+    combined%>%
+    select(c(Country,Sample))%>%
+    ggplot(aes(x="Country",y=Sample,fill=Country))+
+    geom_tile()+
+    theme_void()+
+    scale_fill_manual(values=c("#7f61d3",
+                               "#84b83a",
+                               "#be4eb2",
+                               "#4db955",
+                               "#d54272",
+                               "#6abf87",
+                               "#d14b33",
+                               "#3fc1bf",
+                               "#d99037",
+                               "#616bba",
+                               "#b8af3d",
+                               "#c387d1",
+                               "#5a8233",
+                               "#dd81a0",
+                               "#37835d",
+                               "#9a4769",
+                               "#c6a96d",
+                               "#619dd7"),
+                      name="Country")+
+    plot_layout(guides="collect",widths = c(5,1))
+
+
+ggsave("Figures/cluster_heatmaps.png",clust_heatmap,height = 28.7/2.54)
+```
+
+
+```{r}
+stats::kmeans(meco_16s_ns$otu_table, centers = 2, nstart = 10)
+```
+
 # 16s and sites relations
+
+## PCA sites on env interests
+
+```{r}
+pca_site_var <- NULL
+scree_plot_var_list <- NULL
+for(i in c("st","lt")){
+    
+    var2use <- get(paste0("var_",i))
+    pca_tmp <- combined %>% 
+        dplyr::select(all_of(c("ph",var2use)))%>%
+        FactoMineR::PCA(scale.unit = T,
+                        graph = F)
+    
+    eig <- pca_tmp$eig
+    coord_pca <- as.data.frame(pca_tmp$ind$coord)
+    coord_pca$site <- combined$Sample
+
+    mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
+                    pca_tmp$ind$coord)
+    
+    pca_site_var[[i]] <- ggplot()+
+        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="darkorchid4")+
+        theme_classic2()+
+        geom_vline(xintercept = 0,lty=2)+
+        geom_hline(yintercept = 0,lty=2)+
+        xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+        ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+        geom_segment(data= as.data.frame(pca_tmp$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+                     lineend = "round", 
+                     linejoin = "round",
+                     linewidth = .75, 
+                     arrow = arrow(length = unit(0.2, "inches")),
+                     colour = "black" 
+        )+
+        ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
+                                 aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
+                                     y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                                     label = var),
+                                 max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+        ggtitle(paste0("Biplot sites ",i))+
+        theme(plot.title = element_text(face="bold"))
+    
+    scree_plot_var_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "darkorchid4", barcolor="darkorchid4")
+    ggsave(paste0("Figures/pca_",i,".png"),pca_site_var[[i]]+scree_plot_var_list[[i]],width = 12)
+}
+```
+
 
 ## Alpha div patterns
 
@@ -1705,7 +1834,7 @@ world_lambert <- st_transform(st_as_sf(world_subset), crs = lambert_proj)
                    crs = 4326, agr = "constant"))
 
 # Plot the map
-ggplot() +
+mappall <- ggplot() +
   geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
   geom_sf(data = sites, size = 3, shape = 23, aes(fill = nb_asvs),alpha=.7) +
   ggtitle("MAPP 16s sites") +
@@ -1713,8 +1842,345 @@ ggplot() +
   theme_minimal()+
   theme(panel.background = element_rect(fill = "azure"))+
   scale_fill_viridis_c(limits = c(150, 1900), oob = scales::squish)
+
+(sitesfil <- st_as_sf(meco_16s_relabfiltered$sample_table, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+sitesfil$nb_asvs <- colSums(meco_16s_relabfiltered$otu_table>0)
+
+mappfil <- ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data = sitesfil, size = 3, shape = 23, aes(fill = nb_asvs),alpha=.7) +
+  ggtitle("MAPP 16s sites") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))+
+  scale_fill_viridis_c( oob = scales::squish)
+
+ggsave("Figures/map_full.png",mappall)
+ggsave("Figures/map_fil.png",mappfil)
+
 ```
 
+
+## Cyto pattern
+
+```{r}
+cyto_data <- read.csv2("../../ressource/cytometry/bacteria_algae_abundances_2022.csv")
+
+cyto_data%<>%
+    mutate(ID=stringr::str_replace(ID,"\\.1","a"))%>%
+    mutate(ID=stringr::str_replace(ID,"\\.2","b"))%>%
+    mutate(ID=stringr::str_replace(ID,"\\.3","c"))%>%
+    mutate(ID=ifelse(nchar(ID)<3,paste0("0",ID),ID))%>%
+    mutate(ID=ifelse(nchar(ID)<3,paste0("0",ID),ID))
+
+combined$Sample%in%cyto_data$ID
+setdiff(combined$Sample,cyto_data$ID)
+
+cyto_data$Sample <- cyto_data$ID
+tmp <- left_join(combined,cyto_data)
+
+tmp%>%
+    ggplot(aes(x=nb_asvs,y=Bacteria_AB_mL))+
+    geom_point()
+
+(sitescyto <- st_as_sf(tmp, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+
+mappcyto <- ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data = sitescyto, size = 3, shape = 23, aes(fill = nb_asvs),alpha=.7) +
+  ggtitle("MAPP 16s sites") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))+
+  scale_fill_viridis_c( oob = scales::squish)
+ggsave("Figures/map_cyto.png",mappcyto)
+
+```
+
+
+
+## Filtering on relab
+
+
+```{r}
+meco_16s_relabfiltered <- clone(meco_16s_ns) # clone
+tmp_com <- meco_16s_ns$otu_table%>%
+  mutate(across(everything(),.fns=~./sum(.))) # create a relative abundance matrix
+
+
+filt_05pct <- tmp_com%>%
+  t()%>%
+  as.data.frame() %>%
+  select_if(~max(.)>0.005) # 0.5% threshold. ASVs need to represent more than 0.5% of the community reads in at least one sample.
+
+
+meco_16s_relabfiltered$otu_table%<>%filter(rownames(meco_16s_relabfiltered$otu_table)%in%colnames(filt_05pct)) # get OTUs that match the threshold
+meco_16s_relabfiltered$tidy_dataset() # filter datasets
+
+meco_16s_relabfiltered$sample_table$nb_reads <- colSums(meco_16s_relabfiltered$otu_table) # count reads
+meco_16s_relabfiltered$sample_table$nb_motus <- colSums(meco_16s_relabfiltered$otu_table>0) # count motus
+
+save(meco_16s_relabfiltered,file = "outputs/meco_16s_filtered.RData")
+
+
+read_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=nb_reads,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+asvs_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=Country,y=nb_motus,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+cor_read_asv_plot <- meco_16s_relabfiltered$sample_table%>%
+    left_join(combined)%>%
+    ggplot(aes(x=nb_reads,y=nb_motus,color=Country))+
+    geom_jitter()+
+  scale_color_manual(values=country_color)+
+  theme_classic2()
+
+mds_filtered <- meco_16s_relabfiltered$otu_table%>%
+    t()%>%
+    labdsv::hellinger()%>%
+    vegan::metaMDS(distance= "horn")
+
+mds_plot <- mds_filtered$points%>%
+    as.data.frame()%>%
+    mutate(Sample = gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
+    left_join(combined)%>%
+    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
+    geom_point()+
+    ggtitle("822 asvs")+
+    ordi_16s$points%>%
+    as.data.frame()%>%
+    mutate(Sample =gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
+    left_join(combined)%>%
+    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
+    geom_point()+
+    ggtitle("12792 asvs")
+
+
+procrustes_res <- vegan::procrustes(mds_filtered,ordi_16s, symmetric = T)
+
+procrustes_res
+
+ctest <- data.frame(nmds1=procrustes_res$Yrot[,1],
+                    nmds2=procrustes_res$Yrot[,2],
+                    xnmds1=procrustes_res$X[,1],
+                    xnmds2=procrustes_res$X[,2])
+ctest$Country <- combined$Country[match(gsub("[A-Z]|-|(?=_).*","",rownames(ctest),perl = T),combined$Sample)]
+pro.error <- data.frame(err=residuals(procrustes_res),Sample=meco_16s_ns$sample_table$Sample)%>%
+  left_join(combined)
+quantiles <- quantile(pro.error$err,probs = c(0.25,0.50,0.75))
+p1 <- ggplot(ctest) +
+    geom_point(aes(x=nmds1, y=nmds2,color=Country)) +
+    geom_point(aes(x=xnmds1, y=xnmds2,color=Country)) +
+    coord_fixed()+
+    theme_classic2()+
+    ggtitle("Procrustes 822/12792 ASVs")+
+    scale_color_manual(values=country_color)+
+    theme(legend.position = "n")
+
+p2 <- ggplot(pro.error,aes(x = Sample, y=err,fill = Country))+
+    geom_bar(stat='identity',width = 1)+
+    geom_hline(yintercept = quantiles[1],linetype="dashed")+
+    geom_hline(yintercept = quantiles[2])+
+    geom_hline(yintercept = quantiles[3],linetype="dashed")+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    xlab("site row")+
+    ylab("Residual fit")+ 
+    plot_layout(widths = c(1.4,1.6))+
+    scale_fill_manual(values=country_color)+
+    scale_y_continuous(expand = c(0,0))
+
+p1.solution <- patchwork::wrap_elements(plot = p1 + coord_fixed())
+procr <- patchwork::wrap_plots(p1.solution, p2, ncol = 2)
+ggsave("../paper_16s/Figures/procruste.png",procr,height = 5, width = 14)
+```
+
+
+## Assignation quality
+
+
+donuts plot without singletons fur 16s
+```{r}
+plots_comp <- NULL
+for( i in c("Order_conf_rdp","Genus_conf_rdp")){
+    tmp16s <- clone(meco_16s_relabfiltered)
+    tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+    tmp16s$otu_table %<>% filter(rowSums(.)>1)
+    tmp16s$tidy_dataset()
+    
+    tmp16s$cal_abund()
+    tmp16s1 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8,groupmean = "dumb_group")
+    
+    plot_data1 <- tmp16s1$data_abund
+    use_taxanames <- tmp16s1$data_taxanames
+    plot_data1$Taxonomy[!plot_data1$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data1 %<>% 
+        dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+        dplyr::summarise(Abundance = sum(Abundance)) %>% 
+        as.data.frame(stringsAsFactors = FALSE)
+    plot_data1$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+    plot_data1$label <- paste0(round(plot_data1$Abundance, 1),"%")
+    donut_comp <- ggdonutchart(plot_data1,"Abundance",
+                               fill="Taxonomy",
+                               label = "label",
+                               color = "white",
+                               palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"),
+                               guide = guide_legend(reverse = TRUE) )+
+        theme(legend.position = "right")
+
+    tmp16s2 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8)
+    plot_data2 <- tmp16s2$data_abund
+    plot_data2$Taxonomy[!plot_data2$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data2$Taxonomy %<>% factor(., levels = rev(c(use_taxanames[-9], "Others","unidentified")))
+   bar_comp <- plot_data2%>%
+        ggplot(aes(x=Sample,y=Abundance,fill=Taxonomy),color=NA)+
+        geom_bar(stat = "identity",width=1,position='fill')+
+        scale_fill_manual(values =  rev(c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey")),
+                          guide = guide_legend(reverse = TRUE) )+
+        scale_y_continuous(expand = c(0,0))+
+        theme(axis.text.x = element_blank(),
+              axis.ticks.x = element_blank())
+    
+    plots_comp[[i]] <- donut_comp + bar_comp  +  plot_annotation(title = 'No singletons') & theme(plot.title = element_text(face='bold'))
+}
+plots_comp$Order_conf_rdp
+```
+
+
+```{r}
+ggsave("Figures/comp_order_relfil.png",plots_comp$Order_conf_rdp,width = 14)
+ggsave("Figures/com_genus_relfil.png",plots_comp$Genus_conf_rdp,width = 14)
+```
+
+## Prevalence
+
+```{r}
+for( i in c("meco_16s_ns","meco_16s_relabfiltered")){
+    
+    d_tmp <- get(i)
+    d_tmp <- clone(d_tmp)
+    
+    p <- rowSums(d_tmp$otu_table>0)%>%
+        gghistogram(fill="darkorange",binwidth = 1)+
+        scale_x_continuous(expand = c(0,0))+
+        scale_y_continuous(expand = c(0,0))+
+        xlab("Prevalence")+
+        ylab("ASVs count")+
+        ggtitle(paste0(nrow(d_tmp$otu_table)," ASVs"))+
+        coord_trans(y = "log1p")
+    ggsave(paste0("Figures/prev_",i,".png"),p)
+}
+```
+
+
+
+
+
+## Heatmaps
+
+```{r}
+for( i in c("meco_16s_ns","meco_16s_relabfiltered")){
+    
+    d_tmp <- get(i)
+    d_tmp <- clone(d_tmp)
+    
+    hmap <- d_tmp$otu_table%>%
+        mutate(otus=rownames(.))%>%
+        reshape2::melt()%>%
+        mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T))%>%
+        ggplot(aes(x=variable,y=otus,fill=log(1+value)))+
+        geom_tile()+
+        scale_fill_viridis_c()+
+        theme_void()+
+        guides(fill=guide_legend("Logged number of reads"))
+    
+    ggsave(paste0("Figures/hmap_",i,'.png'),hmap)
+}
+```
+
+
+```{r}
+meco_16s_ns$sample_table%<>%
+    left_join(site_bp)%>%
+    mutate(variable=sample_id)
+rownames(meco_16s_ns$sample_table) <- meco_16s_ns$sample_table$sample_id
+
+(meco_16s_ns$otu_table%>%
+        mutate(otus=rownames(.))%>%
+        reshape2::melt()%>%
+        mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T))%>%
+        ggplot(aes(x=variable,y=otus,fill=log(1+value)))+
+        geom_tile()+
+        theme_void())/(
+            meco_16s_ns$sample_table%>%
+                ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=Country))+
+                geom_tile()+
+                coord_flip()+
+                scale_fill_manual(values=country_color)+
+                theme_void())/(
+                    meco_16s_ns$sample_table%>%
+                        ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=bp_st))+
+                        geom_tile()+
+                        coord_flip()+
+                        scale_fill_manual(values=c("darkgreen","darkorange3","darkorchid4"))+
+                        theme_void())+
+    plot_layout(heights = c(9,1,1),guides = "collect")
+```
+
+```{r}
+meco_16s_ns$otu_table%>%
+    mutate(prevalence=rowSums(.>0))%>%
+    ggplot(aes(x=prevalence))+
+    geom_bar()
+
+otus_more_than_50_samples <- meco_16s_ns$otu_table%>%
+    mutate(prevalence=rowSums(.>0))%>%
+    filter(prevalence>49)
+otus_more50 <- rownames(otus_more_than_50_samples)
+
+quoi <- meco_16s_ns$otu_table%>%
+    mutate(prevalence=rowSums(.>0))
+min(quoi$prevalence)
+```
+
+
+```{r}
+(meco_16s_ns$otu_table%>%
+    mutate(otus=rownames(.))%>%
+    mutate(high_prev=ifelse(otus%in%otus_more50,"yes","nope"))%>%
+    group_by(high_prev)%>%
+    summarise(across(1:(ncol(.)-2),sum))%>%
+    mutate(across(where(is.numeric),~(./sum(.))*100))%>%
+    reshape2::melt(id.vars=c("high_prev"))%>%
+    ggplot(aes(x=variable,y=value,fill=high_prev))+
+    geom_bar(stat = "identity", position = "stack",width=1)+
+    scale_fill_manual(values=c("darkorange","darkorchid4"))+
+    theme_classic2()+
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_blank())+
+    scale_y_continuous(expand=c(0,0))+
+    ylab("Relative abundance within samples (%)"))/(
+            meco_16s_ns$sample_table%>%
+                ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=Country))+
+                geom_tile()+
+                coord_flip()+
+                scale_fill_manual(values=country_color)+
+                theme_void())+
+    plot_layout(heights = c(9,1),guides="collect")
+```
 
 ## LMM
 
@@ -1728,15 +2194,35 @@ var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
 XFormula_lt <- paste(var_lt,sep="", collapse = "+")
 XFormula_st <- paste(var_st,sep="", collapse = "+")
 
-XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ nb_reads ")
-XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ nb_reads ")
+XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ log(nb_reads)")
+XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ log(nb_reads)")
 
 combined %<>% left_join(meco_16s_ns$sample_table)
 
 test <- lm(formula = XFormula_st,
                     data = combined)
 anova(test)
+
+test <- lm(formula = XFormula_lt,
+                    data = combined)
+anova(test)
+plot(test)
+predict(test)
+
+df_test_pred <- data.frame(pred_asvs = predict(test),
+                           actual_asvs = combined$nb_asvs)
+df_test_pred %>%
+    ggplot(aes(x=actual_asvs,
+               y=pred_asvs))+
+    geom_point()+
+    geom_smooth(method = "lm")+
+    stat_regline_equation(label.y = max(df_test_pred$pred_asvs), aes(label = ..rr.label..))
+
 ```
+
+
+
+
 
 ## dbRDA
 
@@ -1910,12 +2396,12 @@ Additionally, a coverage < 80% is pretty low
 picrust_closestref %>%
     filter(NSTI<2)%>%
     filter(`%cov`>80&`%id`>80)%>%
-    nrow()/nrow(picrust_closestref) # 93% of OTUs
+    nrow()/nrow(picrust_closestref) # 97% of OTUs
 
 picrust_closestref %>%
     filter(NSTI<2)%>%
     filter(`%cov`>80&`%id`>80)%>%
-    summarise(sum_seq=sum(`Nb sequences`))/sum(picrust_closestref$`Nb sequences`) # Keep 98% of sequences
+    summarise(sum_seq=sum(`Nb sequences`))/sum(picrust_closestref$`Nb sequences`) # Keep 99% of sequences
 ```
 
 I don't have much confidence in these ASVs associated predictions cuz poorly mapped in Picrust2 reference db so filter them out. 
@@ -2000,27 +2486,27 @@ for(i in pathways_db){
     
     # load function copy number predictions
     if(shrtct == "KO"){
-      kegg_files[["picrust_fct_pred_copynb"]] <- read_delim("picrust2/Galaxy238-[FROGSFUNC_2_functions__KO_copynumbers_predicted.tsv].tsv",
+      kegg_files[["picrust_fct_pred_copynb"]] <- read_delim("picrust2/Galaxy267-[FROGSFUNC_2_functions__KO_copynumbers_predicted.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
       
-      kegg_files[["picrust_fct_unstrat"]] <- read_delim("picrust2/Galaxy240-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_KO.tsv].tsv",
+      kegg_files[["picrust_fct_unstrat"]] <- read_delim("picrust2/Galaxy269-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_KO.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
     }
     else{
-       metacyc_files[["picrust_fct_pred_copynb"]] <- read_delim("picrust2/Galaxy237-[FROGSFUNC_2_functions__EC_copynumbers_predicted.tsv].tsv",
+       metacyc_files[["picrust_fct_pred_copynb"]] <- read_delim("picrust2/Galaxy266-[FROGSFUNC_2_functions__EC_copynumbers_predicted.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
       
-      metacyc_files[["picrust_fct_unstrat"]] <- read_delim("picrust2/Galaxy239-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_EC.tsv].tsv",
+      metacyc_files[["picrust_fct_unstrat"]] <- read_delim("picrust2/Galaxy268-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_EC.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
     }
     
 
 }
     # Load asv excluded by galaxy FROGs
-    galaxy_Xcluded <- read_delim("picrust2/Galaxy236-[FROGSFUNC_2_functions__frogsfunc_functions_asv_excluded.tsv].tsv",
+    galaxy_Xcluded <- read_delim("picrust2/Galaxy265-[FROGSFUNC_2_functions__frogsfunc_functions_asv_excluded.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
     # load normalize marker abundance
-    picrust_norm_marker <- read_delim("picrust2/Galaxy240-[FROGSFUNC_2_functions___frogsfunc_functions_unstrat_KO.tsv].tsv",
+    picrust_norm_marker <- read_delim("picrust2/Galaxy263-[FROGSFUNC_2_functions__frogsfunc_functions_marker_norm.tsv].tsv",
                                               delim = "\t", escape_double = F, trim_ws = T)
 ```
 
@@ -2261,10 +2747,10 @@ ggsave("Figures/metacycplottgt.png",metacyc_plots_tgt,width = 10,height = 10)
 ### Xplore pathways
 
 ```{r}
-kegg_files[["picrust_pathway_unstrat"]] <- read_delim("picrust2/Galaxy242-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv",
+kegg_files[["picrust_pathway_unstrat"]] <- read_delim("picrust2/Galaxy271-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv",
                                                       delim = "\t", escape_double = F, trim_ws = T)
 
-metacyc_files[["picrust_pathway_unstrat"]] <- read_delim("picrust2/Galaxy244-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv",
+metacyc_files[["picrust_pathway_unstrat"]] <- read_delim("picrust2/Galaxy273-[FROGSFUNC_3_pathways__frogsfunc_pathways_unstrat.tsv].tsv",
                                                          delim = "\t", escape_double = F, trim_ws = T)
 ```
 
@@ -2463,6 +2949,37 @@ for(i in pathways_db){
 }
 ```
 
+
+## test new db
+
+```{r}
+kegg_fct <- read_delim(file = "picrust2/Kegg_function_all_pathway_id_fullname_20231128.tsv", # read the tsv file
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE)
+
+kegg_fct2 <- read_delim(file = "picrust2/Kegg_pathway_id_fullname_20231128.tsv", # read the tsv file
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE)
+```
+
+```{r}
+all(kegg_files$picrust_fct_unstrat$observation_name%in%kegg_fct$Function_id)
+not_in_their_db <- kegg_files$picrust_fct_unstrat$observation_name[!kegg_files$picrust_fct_unstrat$observation_name%in%kegg_fct$Function_id]
+
+setdiff(kegg_fct$Function_id,kegg_files$picrust_fct_unstrat$observation_name)
+setdiff(kegg_files$picrust_fct_unstrat$observation_name,kegg_fct$Function_id)
+```
+
+
+```{r}
+tset <- kegg_fct
+tset %<>% rename(observation_name=Function_id)
+tset2 <- kegg_files$picrust_fct_unstrat
+tset2%<>%left_join(tset)
+```
+
+
+
 # Procrustes
 
 ```{r}
@@ -2521,109 +3038,29 @@ for(i in procrustes_list){
 
 
 ```{r}
-meco_16s_relabfiltered <- clone(meco_16s_ns) # clone
-tmp_com <- meco_16s_ns$otu_table%>%
-  mutate(across(everything(),.fns=~./sum(.))) # create a relative abundance matrix
-
-
-filt_05pct <- tmp_com%>%
-  t()%>%
-  as.data.frame() %>%
-  select_if(~max(.)>0.005) # 0.5% threshold. ASVs need to represent more than 0.5% of the community reads in at least one sample.
-
-
-meco_16s_relabfiltered$otu_table%<>%filter(rownames(meco_16s_relabfiltered$otu_table)%in%colnames(filt_05pct)) # get OTUs that match the threshold
-meco_16s_relabfiltered$tidy_dataset() # filter datasets
-
-meco_16s_relabfiltered$sample_table$nb_reads <- colSums(meco_16s_relabfiltered$otu_table) # count reads
-meco_16s_relabfiltered$sample_table$nb_motus <- colSums(meco_16s_relabfiltered$otu_table>0) # count motus
-
-read_plot <- meco_16s_relabfiltered$sample_table%>%
-    left_join(combined)%>%
-    ggplot(aes(x=Country,y=nb_reads,color=Country))+
-    geom_jitter()+
-  scale_color_manual(values=country_color)+
-  theme_classic2()
-asvs_plot <- meco_16s_relabfiltered$sample_table%>%
-    left_join(combined)%>%
-    ggplot(aes(x=Country,y=nb_motus,color=Country))+
-    geom_jitter()+
-  scale_color_manual(values=country_color)+
-  theme_classic2()
-cor_read_asv_plot <- meco_16s_relabfiltered$sample_table%>%
-    left_join(combined)%>%
-    ggplot(aes(x=nb_reads,y=nb_motus,color=Country))+
-    geom_jitter()+
-  scale_color_manual(values=country_color)+
-  theme_classic2()
-
-mds_filtered <- meco_16s_relabfiltered$otu_table%>%
-    t()%>%
-    labdsv::hellinger()%>%
-    vegan::metaMDS(distance= "horn")
-
-mds_plot <- mds_filtered$points%>%
+rowSums(meco_16s_relabfiltered$otu_table>0)%>%
     as.data.frame()%>%
-    mutate(Sample = gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
-    left_join(combined)%>%
-    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
-    geom_point()+
-    ggtitle("822 asvs")+
-    ordi_16s$points%>%
+    rename(prev=1)%>%
+    ggplot(aes(x=prev))+
+    geom_histogram(binwidth = 1)
+
+
+rowSums(meco_16s_relabfiltered$otu_table>0)%>%
     as.data.frame()%>%
-    mutate(Sample =gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
-    left_join(combined)%>%
-    ggplot(aes(x=MDS1,y=MDS2,color=Country))+
-    geom_point()+
-    ggtitle("12792 asvs")
-
-
-procrustes_res <- vegan::procrustes(mds_filtered,ordi_16s, symmetric = T)
-
-procrustes_res
-
-ctest <- data.frame(nmds1=procrustes_res$Yrot[,1],
-                    nmds2=procrustes_res$Yrot[,2],
-                    xnmds1=procrustes_res$X[,1],
-                    xnmds2=procrustes_res$X[,2])
-ctest$Country <- combined$Country[match(gsub("[A-Z]|-|(?=_).*","",rownames(ctest),perl = T),combined$Sample)]
-pro.error <- data.frame(err=residuals(procrustes_res),Sample=meco_16s_ns$sample_table$Sample)%>%
-  left_join(combined)
-quantiles <- quantile(pro.error$err,probs = c(0.25,0.50,0.75))
-ggplot(ctest) +
-  geom_point(aes(x=nmds1, y=nmds2,color=Country)) +
-  geom_point(aes(x=xnmds1, y=xnmds2,color=Country)) +
-  geom_segment(aes(x=nmds1,y=nmds2,xend=xnmds1,yend=xnmds2),arrow=arrow(length=unit(0.2,"cm")))+
-  coord_fixed()+
-  theme_classic2()+
-  scale_color_manual(values=country_color)+
-  theme(legend.position = "n")+
-  ggplot(pro.error,aes(x = Sample, y=err,fill = Country))+
-  geom_bar(stat='identity',width = 1)+
-  geom_hline(yintercept = quantiles[1],linetype="dashed")+
-  geom_hline(yintercept = quantiles[2])+
-  geom_hline(yintercept = quantiles[3],linetype="dashed")+
-  theme_classic2()+
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())+
-  xlab("site row")+
-  ylab("Residual fit")+ 
-  plot_layout(widths = c(1.4,1.6))+
-  scale_fill_manual(values=country_color)+
-  scale_y_continuous(expand = c(0,0))
-
+    rename(prev=1)%>%
+    count(prev>2)
 ```
 
 
 ```{r}
 ordi_metacyc_hell <- metacyc_files$picrust_fct_unstrat%>%
-    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    dplyr::select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
     t()%>%
     labdsv::hellinger()%>%
     metaMDS(distance = "horn")
 
 ordi_kegg_hell <- kegg_files$picrust_fct_unstrat%>%
-    select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
+    dplyr::select(c(which(gsub("[A-Z]|-|(?=_).*","",names(.),perl = T)%in%combined$Sample)))%>%
     t()%>%
     labdsv::hellinger()%>%
     metaMDS(distance = "horn")
@@ -2661,7 +3098,7 @@ cor_procrustes_df%>%
   geom_bar(stat="identity")+
   theme_classic2()+
   theme(axis.text.x = element_text(angle=45,hjust = 1))+
-  scale_fill_manual(values=country_color)+
+  scale_fill_manual(values=RColorBrewer::brewer.pal(9,"Set3"))+
   scale_y_continuous(expand=c(0,0),limits = c(0,1))
 ```
 
@@ -2700,93 +3137,11 @@ mantel(xdis = d_metacyc,
        ydis = d_kegg)
 ```
 
-# Cluster site
-
-```{r}
-var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
-var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
-
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
-
-var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
-var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
-
-results_nbclust_lt <- NbClust::NbClust(scale(combined[c("ph",var_lt)]), distance = 'euclidean',method = "ward.D2")
-results_nbclust_st <- NbClust::NbClust(scale(combined[c("ph",var_st)]), distance = 'euclidean',method = "ward.D2")
-
-site_bp <- combined
-site_bp %<>% mutate(bp_lt = as.factor(results_nbclust_lt$Best.partition),
-                    bp_st = as.factor(results_nbclust_st$Best.partition))
-
-(sites <- st_as_sf(site_bp, coords = c("X", "Y"), 
-                   crs = 4326, agr = "constant"))
-
-map_com_best_part_lt <- (ggplot() +
-                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_lt),alpha=.7) +
-                          ggtitle("Site clustering satellite data LT") +
-                          theme_minimal()+
-                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
-                          theme(panel.background = element_rect(fill = "azure"))+
-                          scale_fill_manual(values = c("darkgreen","darkorange3"),name="Cluster - best partition"))
-
-map_com_best_part_st <- (ggplot() +
-                          geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-                          geom_sf(data = sites, size = 3, shape = 23,aes(fill = bp_st),alpha=.7) +
-                          ggtitle("Site clustering satellite data ST") +
-                          theme_minimal()+
-                          theme(plot.title = element_text(hjust = 0.5, size = 16,face="bold"))+
-                          theme(panel.background = element_rect(fill = "azure"))+
-                          scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition"))
-
-map_com_best_part_lt+map_com_best_part_st
-```
-
-```{r}
-clust_heatmap <- site_bp%>%
-    select(grep("Sample|bp_",colnames(.)))%>%
-    melt("Sample")%>%
-    mutate(variable=fct_relevel(variable,"bp_lt","bp_st"))%>%
-    ggplot(aes(x=variable,y=Sample,fill=value))+
-    geom_tile()+
-    scale_fill_manual(values = c("darkgreen","darkorange3","darkorchid4"),name="Cluster - best partition")+
-    scale_y_discrete(limits=rev)+
-    theme_minimal()+
-    combined%>%
-    select(c(Country,Sample))%>%
-    ggplot(aes(x="Country",y=Sample,fill=Country))+
-    geom_tile()+
-    theme_void()+
-    scale_fill_manual(values=c("#7f61d3",
-                               "#84b83a",
-                               "#be4eb2",
-                               "#4db955",
-                               "#d54272",
-                               "#6abf87",
-                               "#d14b33",
-                               "#3fc1bf",
-                               "#d99037",
-                               "#616bba",
-                               "#b8af3d",
-                               "#c387d1",
-                               "#5a8233",
-                               "#dd81a0",
-                               "#37835d",
-                               "#9a4769",
-                               "#c6a96d",
-                               "#619dd7"),
-                      name="Country")+
-    plot_layout(guides="collect",widths = c(5,1))
-
-
-ggsave("Figures/cluster_heatmaps.png",clust_heatmap,height = 28.7/2.54)
-```
-
 
 # Spls Mixomics
 
 ```{r}
-data_tmp <- meco_16s_ns
+data_tmp <- meco_16s_relabfiltered
 data_tmp <- clone(data_tmp)
 mixomics_com <- t(data_tmp$otu_table)
 library(mixOmics)
@@ -2797,7 +3152,7 @@ for(i in c("lt","st")){
   group_plot <- site_bp[,which(colnames(site_bp)==paste0("bp_",i))]
   
   
-  mydata <- list(df1 = combined[c("ph",var_lt)],
+  mydata <- list(df1 = combined[c("ph",var_lt,"nb_reads")],
                  df2 = mixomics_com) #Here you build your two datasets that should be integrated
   
   X <- mydata$df1 # use the gene expression data as the X matrix
@@ -2824,22 +3179,22 @@ for(i in c("lt","st")){
   spls.holo <- spls(X = X, Y = Y, ncomp = 5, mode = 'regression')
   # repeated CV tuning of component count
   perf.spls.holo <- perf(spls.holo, validation = 'Mfold',
-                         folds = 10, nrepeat = 5) 
+                         folds = 5, nrepeat = 100) 
   
   perfplot <- plot(perf.spls.holo, criterion = 'Q2.total')
   
   
   
   # set range of test values for number of variables to use from X dataframe
-  list.keepX <- c(1:18)
+  list.keepX <- c(1:11)
   # set range of test values for number of variables to use from Y dataframe
-  list.keepY <- c(1:ncol(Y)) 
+  list.keepY <- c(20,30,40,seq(60,200,20),seq(350,ncol(Y),50)) 
   
   
   tune.spls.holo <- tune.spls(X, Y, ncomp = 2,
                               test.keepX = list.keepX,
                               test.keepY = list.keepY,
-                              nrepeat = 1, folds = 10, # use 10 folds
+                              nrepeat = 100, folds = 5, # use 10 folds
                               mode = 'regression', measure = 'cor') 
   tuneplot <- plot(tune.spls.holo)         # use the correlation measure for tuning
   
@@ -2889,7 +3244,7 @@ for(i in c("lt","st")){
   
   # form new perf() object which utilises the final model
   perf.spls.holo <- perf(final.spls.holo, 
-                         folds = 7, nrepeat = 10, # use repeated cross-validation
+                         folds = 5, nrepeat = 100, # use repeated cross-validation
                          validation = "Mfold", 
                          dist = "max.dist",  # use max.dist measure
                          progressBar = FALSE)
@@ -2985,3 +3340,371 @@ for(i in c("lt","st")){
 }
 ```
 
+# Network
+
+```{r}
+# # Required packages
+# install.packages("devtools")
+# install.packages("BiocManager")
+# 
+# # Install NetCoMi
+# devtools::install_github("zdk123/SpiecEasi", 
+#                          dependencies = c("Depends", "Imports", "LinkingTo"),
+#                          repos = c("https://cloud.r-project.org/",
+#                                    BiocManager::repositories()))
+devtools::install_github("valentinitnelav/plotbiomes")
+library(plotbiomes)
+
+whittaker_base_plot()
+
+net1 <- trans_network$new(dataset = meco_16s_relabfiltered, cor_method = NULL)
+
+net1$cal_network(network_method = "SpiecEasi", SpiecEasi_method = "mb")
+
+net1$cal_module(method = "cluster_fast_greedy")
+net1$save_network(filepath = "network.gexf")
+
+net1$get_node_table(node_roles = TRUE)
+```
+
+# Boruta 
+
+```{r}
+library(Boruta)
+set.seed(973)
+boruta_train_st <- Boruta(meco_16s_ns$otu_table~., data = combined[,c("ph",var_st)], doTrace = 2)
+print(boruta_train_st)
+
+boruta_train_lt <- Boruta(meco_16s_ns$otu_table~., data = combined[,c("ph",var_lt)], doTrace = 2)
+print(boruta_train_lt)
+```
+
+
+
+# Random Forest
+
+```{r}
+clust2keep <- rowSums(meco_16s_relabfiltered$otu_table>0)%>%
+    as.data.frame()%>%
+    rename(prev=1)%>%
+    mutate(cluster_id=rownames(.),
+           respect_prev=ifelse(prev>3,"yup","nope"))%>%
+    filter(respect_prev=="yup")
+
+tmp <- meco_16s_relabfiltered$otu_table
+tmp <- tmp[rownames(tmp)%in%clust2keep$cluster_id,]
+tmp%<>%
+    t()%>%
+    as.data.frame()%>%
+    mutate(Sample= gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))
+
+eurg <- tmp%>%
+    dplyr::select(-Sample)
+richness <- rowSums(eurg>0)
+tmp$richness <- richness
+
+ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
+
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
+
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+
+var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
+var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
+
+XFormula_lt <- paste("train$",var_lt,sep="", collapse = "+")
+XFormula_st <- paste("train$",var_st,sep="", collapse = "+")
+XFormula_st <- paste0("~train$ph+",XFormula_st)
+XFormula_lt <- paste0("~train$ph+",XFormula_lt)
+
+rf_rez <- NULL
+plot_var_xplain <- NULL
+store_var <- NULL
+var_unlist <- NULL
+for( i in c("_lt","_st")){
+    formu <- get(paste0("XFormula",i))
+    
+    var <- get(paste0("var",i))
+    
+    for(j in 1:500){
+        
+        ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
+        
+        train <- combined[ind==1,c("Sample","ph",var)]
+        test <- combined[ind==2,c("Sample","ph",var)]
+        train%<>%
+            left_join(tmp)
+        
+        var_rf <- NULL  
+        formula_tmp <- paste0("richness",formu)
+        rf <- randomForest::randomForest(as.formula(formula_tmp), data=train, proximity=TRUE, type = "regression") 
+        rf_rez[[i]][[j]] <- rf
+        var_rf <- c(round(100 * rf$rsq[length(rf$rsq)], digits = 2),var_rf)
+        store_var[[i]][[j]] <- var_rf
+    }
+}
+
+tseteudessuh <- data.frame(type = c(rep("lt",500),rep("st",500)),
+                          var = c(c(unlist(store_var$`_lt`)),c(unlist(store_var$`_st`))))
+
+tseteudessuh%>%
+    ggplot(aes(x=type,y=var,fill=type))+
+    geom_violin()
+```
+
+# GDM
+
+```{r}
+gdm_formated <- NULL
+gdm_fitted <- NULL
+for(i in c("lt","st")){
+    
+    meco_tmp <- get("meco_16s_ns") # get com datasets
+    data_sat_tmp <- combined
+    bioclim_predictors <- get(paste0("var_",i))
+    bioclim_predictors <- c("ph",bioclim_predictors)
+    
+    
+    comunity_df_hellingered <- as.data.frame(labdsv::hellinger(t(meco_tmp$otu_table))) # extract community matrices and transform to hellinger
+    
+    comunity_df_hellingered$siteCol <-  gsub("[A-Z]|-|(?=_).*","",rownames(comunity_df_hellingered),perl = T)  # get site name (i.e., sample)
+    comunity_df_hellingered %<>%  
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))%>% # reformat 1 into 001 and 64 to 064 etc...
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))
+    data_sat_tmp %<>% rename(siteCol=Sample) # rename 
+    
+    gdm_biodata <- left_join(comunity_df_hellingered,data_sat_tmp[,c("siteCol","X","Y")]) %>% # create gdm_biodata with site X and Y (long and lat)
+        relocate(siteCol,X,Y)
+    gdm_preddata <- data_sat_tmp %>%
+        filter(siteCol%in%gdm_biodata$siteCol) %>% #remove sites not in biodata
+        dplyr::select(all_of(c(bioclim_predictors,"siteCol"))) # get only variables we are interested in
+    
+    gdm_formated_tmp <- gdm::formatsitepair(bioData = gdm_biodata, # create data in the gdm format
+                                            bioFormat = 1,
+                                            dist="horn",
+                                            abundance = T,
+                                            siteColumn = "siteCol",
+                                            sppColumn = NULL,
+                                            abundColumn = NULL,
+                                            XColumn = "X",
+                                            YColumn = "Y",
+                                            predData = gdm_preddata)
+    gdm_formated[[i]] <- gdm_formated_tmp # store formated data
+    gdm_fitted[[i]] <- gdm::gdm(gdm_formated_tmp, # fit gdm
+                                geo = T)
+}
+plot(gdm_fitted$lt)
+```
+
+```{r}
+gdm_spline_lt <- gdm::isplineExtract(gdm_fitted$lt)
+
+gdm_spline_lt$x%>%
+    reshape2::melt()%>%
+    rename(valuex=value)%>%
+    left_join(reshape2::melt(gdm_spline_lt$y))%>%
+    rename(valuey=value)%>%
+    ggplot(aes(x=valuex, y=valuey))+
+    geom_line()+
+    facet_wrap(~Var2, scales="free")+
+    theme_bw()
+```
+
+```{r}
+gdm_pred_lt <- predict(object=gdm_fitted$lt,
+                       data=gdm_preddata)
+
+gdm_fitted$lt$predicted
+
+prd_df <- data.frame(predlt=gdm_fitted$lt$predicted,
+                     obslt=gdm_fitted$lt$observed,
+                     ecolt=gdm_fitted$lt$ecological)
+
+get_density <- function(x, y, ...) {
+  dens <- MASS::kde2d(x, y, ...)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+}
+
+
+prd_df$density_ecoobs <- get_density(prd_df$obslt, prd_df$ecolt, n = 100)
+ggplot(prd_df,
+       aes(x=ecolt,
+           y=obslt,
+           color=density_ecoobs))+
+    geom_point()+
+    geom_smooth(se=F,method = "loess")+
+    ylim(c(0,1))+ 
+    viridis::scale_color_viridis()
+
+
+prd_df$density_obspred <- get_density(prd_df$obslt, prd_df$predlt, n = 100)
+ggplot(prd_df,
+       aes(x=obslt,
+           y=predlt,
+           color=density_obspred))+
+    geom_point()+
+    geom_smooth(method="lm")+ 
+    viridis::scale_color_viridis()
+```
+
+
+
+
+```{r}
+gdm_formated_relabfilt <- NULL
+gdm_fitted_relabfilt <- NULL
+for(i in c("lt","st")){
+    
+    meco_tmp <- get("meco_16s_relabfiltered") # get com datasets
+    data_sat_tmp <- combined
+    bioclim_predictors <- get(paste0("var_",i))
+    bioclim_predictors <- c("ph",bioclim_predictors)
+    
+    
+    comunity_df_hellingered <- as.data.frame(labdsv::hellinger(t(meco_tmp$otu_table))) # extract community matrices and transform to hellinger
+    
+    comunity_df_hellingered$siteCol <-  gsub("[A-Z]|-|(?=_).*","",rownames(comunity_df_hellingered),perl = T)  # get site name (i.e., sample)
+    comunity_df_hellingered %<>%  
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))%>% # reformat 1 into 001 and 64 to 064 etc...
+        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))
+    data_sat_tmp %<>% rename(siteCol=Sample) # rename 
+    
+    gdm_biodata <- left_join(comunity_df_hellingered,data_sat_tmp[,c("siteCol","X","Y")]) %>% # create gdm_biodata with site X and Y (long and lat)
+        relocate(siteCol,X,Y)
+    gdm_preddata <- data_sat_tmp %>%
+        filter(siteCol%in%gdm_biodata$siteCol) %>% #remove sites not in biodata
+        dplyr::select(all_of(c(bioclim_predictors,"siteCol"))) # get only variables we are interested in
+    
+    gdm_formated_tmp <- gdm::formatsitepair(bioData = gdm_biodata, # create data in the gdm format
+                                            bioFormat = 1,
+                                            dist="horn",
+                                            abundance = T,
+                                            siteColumn = "siteCol",
+                                            sppColumn = NULL,
+                                            abundColumn = NULL,
+                                            XColumn = "X",
+                                            YColumn = "Y",
+                                            predData = gdm_preddata)
+    gdm_formated_relabfilt[[i]] <- gdm_formated_tmp # store formated data
+    gdm_fitted_relabfilt[[i]] <- gdm::gdm(gdm_formated_tmp, # fit gdm
+                                geo = T)
+}
+
+
+gdm_spline_lt <- gdm::isplineExtract(gdm_fitted_relabfilt$lt)
+
+gdm_spline_lt$x%>%
+    reshape2::melt()%>%
+    rename(valuex=value)%>%
+    left_join(reshape2::melt(gdm_spline_lt$y))%>%
+    rename(valuey=value)%>%
+    ggplot(aes(x=valuex, y=valuey))+
+    geom_line()+
+    facet_wrap(~Var2, scales="free")+
+    theme_bw()
+
+
+
+gdm_pred_lt_relabfilt <- predict(object=gdm_fitted_relabfilt$lt,
+                                 data=gdm_preddata)
+
+
+prd_df_relabfilt <- data.frame(predlt=gdm_fitted_relabfilt$lt$predicted,
+                               obslt=gdm_fitted_relabfilt$lt$observed,
+                               ecolt=gdm_fitted_relabfilt$lt$ecological)
+
+
+prd_df_relabfilt$density_ecoobs <- get_density(prd_df_relabfilt$obslt, prd_df_relabfilt$ecolt, n = 100)
+ggplot(prd_df,
+       aes(x=ecolt,
+           y=obslt,
+           color=density_ecoobs))+
+    geom_point()+
+    geom_smooth(se=F,method = "loess")+
+    ylim(c(0,1))+ 
+    viridis::scale_color_viridis()
+
+
+prd_df_relabfilt$density_obspred <- get_density(prd_df_relabfilt$obslt, prd_df_relabfilt$predlt, n = 100)
+ggplot(prd_df,
+       aes(x=obslt,
+           y=predlt,
+           color=density_obspred))+
+    geom_point()+
+    geom_smooth(method="lm")+ 
+    viridis::scale_color_viridis()
+```
+
+
+#glmmields
+
+```{r}
+# install.packages("glmmfields")
+# library(glmmfields)
+hist(combined$nb_asvs)
+m_spatial <- glmmfields::glmmfields(formula = nb_asvs ~ ph + height + water + gHM + soc +aet_st+moist_st+pr_st+swe_st+tmmn_st+tmmx_st+vap_st+vpd_st+evi_st+fpar_st+gpp_st+ log(nb_reads),
+                                    data = combined[,1:(ncol(combined)-2)],
+                                    family = gaussian(link = "identity"),
+                                    lat = "Y",
+                                    lon = "X", 
+                                    nknots = 20,
+                                    iter = 1000, 
+                                    chains = 4,
+                                    seed = 973, # passed to rstan::sampling()
+                                    # init = "0",
+                                    thin=5
+)
+# install.packages("bayesplot")
+library(bayesplot)
+
+tidy_m <- glmmfields::tidy(m_spatial)
+print(m_spatial)
+
+plot(m_spatial, type = "prediction") + scale_color_gradient2()
+plot(m_spatial, type = "spatial-residual")
+
+p <- predict(m_spatial)
+p
+```
+
+## Spatial components
+```{r}
+(sites2 <- st_as_sf(combined, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+sites2$residuals <- residuals(test)
+sites2$fitted <- fitted(test)
+
+# We can plot the location dataset using geom_sf() instead of geom_point()
+ggplot(sites2, aes(col = residuals, size = residuals)) +
+  geom_sf() +
+  scale_color_gradient2()
+
+
+
+ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data = sites2, size = 3, shape = 23, aes(fill = residuals, size = residuals),alpha=.7) +
+  ggtitle("MAPP 16s sites") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))+
+  scale_fill_viridis_c(oob = scales::squish)
+
+sites2.nb <- spdep::dnearneigh(sites2, d1 = 0, d2 = 200)
+sites2.lw <- spdep::nb2listw(sites2.nb, style = "W", zero.policy = TRUE)
+spdep::lm.morantest(test, sites2.lw, zero.policy = T) # spatial autocorr
+spdep::lm.RStests(test, sites2.lw, test="RSerr", zero.policy = T) # spatial error
+spdep::lm.RStests(test, sites2.lw, test="RSlag", zero.policy = T) # spatial lag model
+
+col_nb1_sf = spdep::nb2lines(col_nb1, coords=coords1, proj4string=NULL, as_sf=T) # weights are binary
+  
+library(sf)
+library(spdep)
+ggplot()+
+    geom_sf(data=sites2.nb)
+```
