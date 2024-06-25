@@ -1,9 +1,9 @@
-nParallel = 10 #Default: nParallel = nChains
+nParallel = 3 #Default: nParallel = nChains
 set.seed(973) #reproductibility
 # SET DIRECTORIES 
 localDir = "R_scripts/paper_16s/Hmsc_pipeline/"
 modelDir = file.path(localDir, "models")
-load(file=file.path(modelDir,"unfitted_models_V1.RData"))
+load(file=file.path(modelDir,"unfitted_models_flt_V1.RData"))
 
 
 # FIT WITH HMSC HPC
@@ -92,16 +92,22 @@ for(i in 1:length(samples_list)){
                                                        "_post_file.rds",
                                                        sep = "")) 
             
-            python_cmd_args = paste("-m hmsc.run_gibbs_sampler",
-                                    "--input", shQuote(filename),
-                                    "--output", shQuote(post_file_path),
-                                    "--samples", samples,
-                                    "--transient",  ceiling(0.5*samples*thin),
-                                    "--thin", thin,
-                                    "--verbose", verbose)
-            cat(paste(shQuote(python), python_cmd_args), "\n")
-            system2(python, python_cmd_args)
-            gc()
+            if(file.exists(post_file_path)){
+                print("model had been fitted already")
+            } else {
+                
+                
+                python_cmd_args = paste("-m hmsc.run_gibbs_sampler",
+                                        "--input", shQuote(filename),
+                                        "--output", shQuote(post_file_path),
+                                        "--samples", samples,
+                                        "--transient",  ceiling(0.5*samples*thin),
+                                        "--thin", thin,
+                                        "--verbose", verbose)
+                cat(paste(shQuote(python), python_cmd_args), "\n")
+                system2(python, python_cmd_args)
+                gc()
+            }
         }
     }
 }
