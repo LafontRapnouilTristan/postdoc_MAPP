@@ -15,12 +15,12 @@ if(!dir.exists(modelDir)) dir.create(modelDir)
 
 # READ AND EXPLORE THE DATA
 
-load("R_scripts/paper_16s/outputs/meco_16s.RDS")
+load("R_scripts/paper_16s/outputs/meco_16s_filtered.RData")
 load("R_scripts/paper_16s/outputs/site_data_imputed.RDS")
 site_data <- combined
 rm(combined)
 
-Y <- t(meco_16s_ns$otu_table)
+Y <- t(meco_16s_relabfiltered$otu_table)
 rownames(Y)<-  gsub("[A-Z]|-|(?=_).*","",rownames(Y),perl = T)  # get site name (i.e., sample)
 samp_to_keep <- rownames(Y)
 Y <- Y[order(rownames(Y)),]
@@ -133,22 +133,20 @@ XData %<>%select(-c("Sample","Country")) #remove country and sample_id from X
 XFormula_list <- c(XFormula_lt,XFormula_st,XFormula_null) # list with my formulas
 names(XFormula_list) <- c("XFormula_lt","XFormula_st","XFormula_null")
 m_list <- NULL
-
-m_list <- NULL
 for(i in 1:length(XFormula_list)){
     
     # hurdle PA
-    mpa <- Hmsc(Y=Ypa, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "probit", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mpa <- Hmsc(Y=Ypa, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "probit", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     # Hurdle abundance
-    mabu <- Hmsc(Y=Yabu, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "normal", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mabu <- Hmsc(Y=Yabu, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "normal", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     # Classic model
-    mclassic <- Hmsc(Y=Yraw, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mclassic <- Hmsc(Y=Yraw, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     # Classic model with scaled Y
-    mclassicscale <- Hmsc(Y=Yraw, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mclassicscale <- Hmsc(Y=Yraw, YScale = T, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     # Classic model
-    mhellinger <- Hmsc(Y=Yhell, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mhellinger <- Hmsc(Y=Yhell, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     # Classic model with scaled Y
-    mhellingerscale <- Hmsc(Y=Yhell, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+    mhellingerscale <- Hmsc(Y=Yhell, YScale = T, XData = XData[,-47],  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
     
     m_list[[names(XFormula_list)[i]]][["mpa"]] <- mpa
     m_list[[names(XFormula_list)[i]]][["mabu"]] <- mabu
@@ -160,7 +158,7 @@ for(i in 1:length(XFormula_list)){
 }
 
 #  SAVING MODELS 
-save(m_list, file = file.path(modelDir, "unfitted_models_V1.RData"))
+save(m_list, file = file.path(modelDir, "unfitted_models_flt_V1.RData"))
 
 # TESTING THAT MODELS FIT WITHOUT ERRORS
 mod_type <- c("mpa","mabu","mclassic","mclassicscale","mhellinger","mhellingerscale")
