@@ -312,6 +312,15 @@ cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
                                               colour=NA), # to remove border of panel
               panel.grid.major = element_blank())
 }
+
+
+get_density <- function(x, y, ...) {
+  dens <- MASS::kde2d(x, y, ...)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+}
 ```
 
 # MetabaR Processing
@@ -3276,7 +3285,7 @@ for(i in c("lt","st")){
     ggtitle("Y features")
   
   plot_stabz <- stabX_plot/stabY_plot
-  
+     
   corcirvar <- plotVar(final.spls.holo, cex = c(3,4), var.names = c(FALSE, TRUE))
   corcirvar%<>%
     mutate(names=rownames(.))
@@ -3494,24 +3503,34 @@ for(i in c("lt","st")){
     gdm_fitted[[i]] <- gdm::gdm(gdm_formated_tmp, # fit gdm
                                 geo = T)
 }
-plot(gdm_fitted$lt)
 ```
+
+```{r}
+names_df_clean <-data.frame(fullname= c("Geographic","pH","Evapo-transpiration","Precipitation","Snow water equivalent", "T° min","T° max","Vapor pressure deficit", "Enhanced vegetation index", "Fraction of absorbed photosynthetically active radiation","Growth primary production"),
+                            Var2= c("Geographic","ph","aet","pr","swe", "tmmn","tmmx","vpd", "evi", "fpar","gpp"),
+                            midname= c("Geographic","pH","AET","Precipitation","Snow water eq","T° min","T° max","VPD","eVI","FPAR","GPP"))
+```
+
 
 ```{r}
 gdm_spline_lt <- gdm::isplineExtract(gdm_fitted$lt)
 
-gdm_spline_lt$x%>%
+
+var_effect_lt<- gdm_spline_lt$x%>%
     reshape2::melt()%>%
     rename(valuex=value)%>%
     left_join(reshape2::melt(gdm_spline_lt$y))%>%
+    mutate(Var2=gsub("_lt","",Var2))%>%
     rename(valuey=value)%>%
+    left_join(names_df_clean)%>%
+    mutate(midname=fct_relevel(midname,unique(names_df_clean$midname)))%>%
     ggplot(aes(x=valuex, y=valuey))+
     geom_line()+
-    facet_wrap(~Var2, scales="free")+
-    theme_bw()
-```
+    facet_wrap(~midname, scales="free")+
+    theme_bw()+
+    ylab("Biological change")+
+    xlab("Variable gradient")
 
-```{r}
 gdm_pred_lt <- predict(object=gdm_fitted$lt,
                        data=gdm_preddata)
 
@@ -3521,34 +3540,30 @@ prd_df <- data.frame(predlt=gdm_fitted$lt$predicted,
                      obslt=gdm_fitted$lt$observed,
                      ecolt=gdm_fitted$lt$ecological)
 
-get_density <- function(x, y, ...) {
-  dens <- MASS::kde2d(x, y, ...)
-  ix <- findInterval(x, dens$x)
-  iy <- findInterval(y, dens$y)
-  ii <- cbind(ix, iy)
-  return(dens$z[ii])
-}
-
 
 prd_df$density_ecoobs <- get_density(prd_df$obslt, prd_df$ecolt, n = 100)
-ggplot(prd_df,
-       aes(x=ecolt,
-           y=obslt,
-           color=density_ecoobs))+
+obsecol_plot <- ggplot(prd_df,
+                       aes(x=ecolt,
+                           y=obslt,
+                           color=density_ecoobs))+
     geom_point()+
     geom_smooth(se=F,method = "loess")+
     ylim(c(0,1))+ 
-    viridis::scale_color_viridis()
+    viridis::scale_color_viridis()+
+    ylab("Observed biological distance")+
+    xlab("Ecological distance")
 
 
 prd_df$density_obspred <- get_density(prd_df$obslt, prd_df$predlt, n = 100)
-ggplot(prd_df,
-       aes(x=obslt,
-           y=predlt,
-           color=density_obspred))+
+predsobs_plot <- ggplot(prd_df,
+                        aes(x=obslt,
+                            y=predlt,
+                            color=density_obspred))+
     geom_point()+
     geom_smooth(method="lm")+ 
-    viridis::scale_color_viridis()
+    viridis::scale_color_viridis()+
+    ylab("Predicted biological distance")+
+    xlab("Observed biological distance")
 ```
 
 

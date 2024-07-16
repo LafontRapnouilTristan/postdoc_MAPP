@@ -1,5 +1,5 @@
 nParallel = 3 #Default: nParallel = nChains
-set.seed(973) #reproductibility
+# set.seed(973) #reproductibility
 # SET DIRECTORIES 
 localDir = "R_scripts/paper_16s/Hmsc_pipeline/"
 modelDir = file.path(localDir, "models")
@@ -33,7 +33,7 @@ for(i in 1:length(samples_list)){
     for (m_formu in 1:model_formu) {
         for(m_type in mod_type){
             
-            mod_name <- paste0(names(m_list)[m_formu]," : ",m_type)
+            mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
             print(paste0("model -> ",mod_name))
             
             filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
@@ -75,7 +75,7 @@ for(i in 1:length(samples_list)){
     for (m_formu in 1:model_formu) {
         for(m_type in mod_type){
             
-            mod_name <- paste0(names(m_list)[m_formu]," : ",m_type)
+            mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
             print(paste0("model -> ",mod_name))
             
             filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
