@@ -330,6 +330,7 @@ cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
               panel.grid.major = element_blank())
 }
 
+<<<<<<< HEAD
 agg.table.taxo <- function(tab, tax.lvl="genus", tax.table) {
   tax.table <- tax.table[match(rownames(tab),
                                rownames(tax.table)),]
@@ -342,6 +343,15 @@ agg.table.taxo <- function(tab, tax.lvl="genus", tax.table) {
   rownames(tab) <- tab[,1]  
   tab <- tab[,-1]
   return(tab)
+=======
+
+get_density <- function(x, y, ...) {
+  dens <- MASS::kde2d(x, y, ...)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+>>>>>>> 05b2926576e87756932052c037b9cf23240849c3
 }
 ```
 
@@ -3606,7 +3616,81 @@ for(i in c("lt","st")){
   
   mixomics_plotlists[[i]][["final"]] <- final.spls.holo
   
+<<<<<<< HEAD
   }
+=======
+  stabY_plot <- ggplot(stabY,aes(x=reorder(features,-value),y=value))+
+    geom_bar(stat="identity")+
+    facet_wrap(.~variable)+
+    theme_classic2()+
+    theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
+    scale_y_continuous(expand=c(0,0))+
+    ggtitle("Y features")
+  
+  plot_stabz <- stabX_plot/stabY_plot
+     
+  corcirvar <- plotVar(final.spls.holo, cex = c(3,4), var.names = c(FALSE, TRUE))
+  corcirvar%<>%
+    mutate(names=rownames(.))
+  corcirplot <- 
+    ggplot(corcirvar,mapping=aes(x=x,y=y,color=Block,label=names))+
+    geom_point()+
+    ggrepel::geom_text_repel(max.overlaps = 15)+
+    xlim(c(-1,1))+
+    ylim(c(-1,1))+
+    geom_vline(xintercept = 0,linetype="dashed")+
+    geom_hline(yintercept = 0,linetype="dashed")+
+    theme_classic2()+
+    ggforce::geom_circle(aes(x0=0,y0=0,r=.5),color="black")+
+    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
+    scale_color_manual(values = c("aquamarine3","darkorange2"))
+  
+  
+  finmiomix <- plot_stabz+corcirplot
+  
+  heatmap_data_mixom <- cim(final.spls.holo, comp = 1:2, xlab = "clinic", ylab = "genes")
+  
+  
+  p1tmp <- (ggdendro::ggdendrogram(heatmapmixom$ddc)+
+              theme(axis.text.x = element_blank(),
+                    axis.text.y = element_blank()))/
+    ( heatmapmixom$mat%>%
+        as.data.frame()%>%
+        mutate(plant_traits=rownames(.))%>%
+        mutate(plant_traits=fct_relevel(plant_traits,c(heatmapmixom$row.names)))%>%
+        reshape2::melt()%>%
+        mutate(variable=fct_relevel(variable,c(heatmapmixom$col.names)))%>%
+        ggplot(aes(y=plant_traits,x=variable,fill=value))+
+        geom_tile()+
+        theme(axis.text.x = element_text(angle = 90),
+              panel.background = element_blank(),
+              legend.position = "right"))+
+    plot_layout(heights = c(2,6))
+  
+  p2tmp <- (plot_spacer())/(ggdendro::ggdendrogram(heatmapmixom$ddr)+
+                              theme(axis.text.y=element_blank(),axis.text.x=element_blank())+
+                              coord_flip())+
+    plot_layout(heights = c(2.5,6))
+  
+  
+  hmap_mixom <- (p1tmp|p2tmp)+plot_layout(widths = c(6,2),guides="collect")
+  
+  mixomics_plotlists[[i]][["compX"]] <- compX
+  mixomics_plotlists[[i]][["compY"]] <- compY
+  mixomics_plotlists[[i]][["indX"]] <- indX
+  mixomics_plotlists[[i]][["indY"]] <- indY
+  mixomics_plotlists[[i]][["perfplot"]] <- perfplot
+  mixomics_plotlists[[i]][["tuneplot"]] <- tuneplot
+  mixomics_plotlists[[i]][["optX"]] <- optimal.keepX
+  mixomics_plotlists[[i]][["optY"]] <- optimal.keepY
+  mixomics_plotlists[[i]][["findX"]] <- findX
+  mixomics_plotlists[[i]][["findY"]] <- findY
+  mixomics_plotlists[[i]][["findXY"]] <- findXY
+  mixomics_plotlists[[i]][["farrow"]] <- farrow
+  mixomics_plotlists[[i]][["finmiomix"]] <- finmiomix
+  mixomics_plotlists[[i]][["hmap_mixom"]] <- hmap_mixom
+}
+>>>>>>> 05b2926576e87756932052c037b9cf23240849c3
 ```
 
 
@@ -3778,6 +3862,7 @@ for(i in c("lt","st")){
 ```
 
 ```{r}
+<<<<<<< HEAD
 get_density <- function(x, y, ...) {
   dens <- MASS::kde2d(x, y, ...)
   ix <- findInterval(x, dens$x)
@@ -3846,6 +3931,66 @@ for(i in c("lt","st")){
     
   }
 }
+=======
+names_df_clean <-data.frame(fullname= c("Geographic","pH","Evapo-transpiration","Precipitation","Snow water equivalent", "T° min","T° max","Vapor pressure deficit", "Enhanced vegetation index", "Fraction of absorbed photosynthetically active radiation","Growth primary production"),
+                            Var2= c("Geographic","ph","aet","pr","swe", "tmmn","tmmx","vpd", "evi", "fpar","gpp"),
+                            midname= c("Geographic","pH","AET","Precipitation","Snow water eq","T° min","T° max","VPD","eVI","FPAR","GPP"))
+```
+
+
+```{r}
+gdm_spline_lt <- gdm::isplineExtract(gdm_fitted$lt)
+
+
+var_effect_lt<- gdm_spline_lt$x%>%
+    reshape2::melt()%>%
+    rename(valuex=value)%>%
+    left_join(reshape2::melt(gdm_spline_lt$y))%>%
+    mutate(Var2=gsub("_lt","",Var2))%>%
+    rename(valuey=value)%>%
+    left_join(names_df_clean)%>%
+    mutate(midname=fct_relevel(midname,unique(names_df_clean$midname)))%>%
+    ggplot(aes(x=valuex, y=valuey))+
+    geom_line()+
+    facet_wrap(~midname, scales="free")+
+    theme_bw()+
+    ylab("Biological change")+
+    xlab("Variable gradient")
+
+gdm_pred_lt <- predict(object=gdm_fitted$lt,
+                       data=gdm_preddata)
+
+gdm_fitted$lt$predicted
+
+prd_df <- data.frame(predlt=gdm_fitted$lt$predicted,
+                     obslt=gdm_fitted$lt$observed,
+                     ecolt=gdm_fitted$lt$ecological)
+
+
+prd_df$density_ecoobs <- get_density(prd_df$obslt, prd_df$ecolt, n = 100)
+obsecol_plot <- ggplot(prd_df,
+                       aes(x=ecolt,
+                           y=obslt,
+                           color=density_ecoobs))+
+    geom_point()+
+    geom_smooth(se=F,method = "loess")+
+    ylim(c(0,1))+ 
+    viridis::scale_color_viridis()+
+    ylab("Observed biological distance")+
+    xlab("Ecological distance")
+
+
+prd_df$density_obspred <- get_density(prd_df$obslt, prd_df$predlt, n = 100)
+predsobs_plot <- ggplot(prd_df,
+                        aes(x=obslt,
+                            y=predlt,
+                            color=density_obspred))+
+    geom_point()+
+    geom_smooth(method="lm")+ 
+    viridis::scale_color_viridis()+
+    ylab("Predicted biological distance")+
+    xlab("Observed biological distance")
+>>>>>>> 05b2926576e87756932052c037b9cf23240849c3
 ```
 
 ```{r}
