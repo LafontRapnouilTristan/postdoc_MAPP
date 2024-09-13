@@ -159,20 +159,6 @@ EcophyCofog::Library(c("EcophyCofog","metabaR","readr","dplyr","magrittr","ggplo
 ```
 
 ```{r}
-arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
-  u <- c(range(data[,1], range(data[,2])))
-  u <- u - rep(at, each = 2)
-  r <- c(range(arrows[, 1], na.rm = TRUE), range(arrows[, 2], na.rm = TRUE))
-  rev <- sign(diff(u))[-2]
-  if (rev[1] < 0)
-    u[1:2] <- u[2:1]
-  if (rev[2] < 0)
-    u[3:4] <- u[4:3]
-  u <- u/r
-  u <- u[is.finite(u) & u > 0]
-  fill * min(u)
-}
-
 createAngleHJustCols <- function(labeldf) {        
     nn <- length(labeldf$y)
     halfn <- floor(nn/2)
@@ -293,44 +279,8 @@ fviz_nbclust_fixed <- function (x, FUNcluster = NULL, method = c("silhouette", "
 
 
 
-cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
-    
-    # grab data
-    x <- eval_data_col(data, mapping$x)
-    y <- eval_data_col(data, mapping$y)
-    
-    # calculate correlation: for significance stars
-    corr <- cor.test(x, y, method=method)
-    est <- corr$estimate
-    
-    # get significance stars
 
-        stars <- c("***", "**", "*", "")[findInterval(corr$p.value, c(0, 0.001, 0.01, 0.05, 1))]
-        lbl <- stars
 
-    # calculate correlation: for colored tiles
-    corr <- cor(x, y, method=method, use=use)
-    
-    # calculate color based on correlation value
-    # corr = -1 => blue, 
-    # corr =  0 => white, 
-    # corr = +1 => red, 
-    colFn <- colorRampPalette(c("blue", "white", "red"), interpolate ='spline')
-    fill <- colFn(100)[findInterval(corr, seq(-1, 1, length=100))]
-    fill[which(stars=="")] <- "grey"
-    ggplot(data = data, mapping = mapping, ...) + 
-        theme_void() +
-        annotate("text",
-                 x=mean(x, na.rm=TRUE),
-                 y=mean(y, na.rm=TRUE),
-                 label=lbl,
-                 ...) +
-        theme(panel.background = element_rect(fill=fill,  # to fill background of panel with color
-                                              colour=NA), # to remove border of panel
-              panel.grid.major = element_blank())
-}
-
-<<<<<<< HEAD
 agg.table.taxo <- function(tab, tax.lvl="genus", tax.table) {
   tax.table <- tax.table[match(rownames(tab),
                                rownames(tax.table)),]
@@ -343,7 +293,7 @@ agg.table.taxo <- function(tab, tax.lvl="genus", tax.table) {
   rownames(tab) <- tab[,1]  
   tab <- tab[,-1]
   return(tab)
-=======
+}
 
 get_density <- function(x, y, ...) {
   dens <- MASS::kde2d(x, y, ...)
@@ -351,7 +301,6 @@ get_density <- function(x, y, ...) {
   iy <- findInterval(y, dens$y)
   ii <- cbind(ix, iy)
   return(dens$z[ii])
->>>>>>> 05b2926576e87756932052c037b9cf23240849c3
 }
 ```
 
@@ -751,8 +700,6 @@ gc()
 
 
 remove unwanted samples (Vincent treatments and chile sample)
-
-
 ```{r}
 data_temp <- physeqcl
 data_temp <- subset_samples(data_temp, !grepl("23[1-7]|239|240|241|042-047|047-042|246b",data_temp@sam_data$sample_id))
@@ -775,6 +722,24 @@ site_coordinates %<>%
     mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
 site_coordinates %<>% 
     mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample)) # fix 87a and 87b to 087a and 087b
+
+#add a little jitter to avoid exactly similar coordinates
+site_coordinates$X2 <- site_coordinates$X
+site_coordinates$Y2 <- site_coordinates$Y
+site_coordinates$X2[which(duplicated(site_coordinates$X2))] <- jitter(site_coordinates$X2[which(duplicated(site_coordinates$X2))] ,amount = 8.983112*10^-6)
+site_coordinates$Y2[which(duplicated(site_coordinates$Y2))] <- jitter(site_coordinates$Y2[which(duplicated(site_coordinates$Y2))] ,amount = 8.983112*10^-6)
+
+write.csv(site_coordinates[,c("Sample","Y","X","Country")],"../../ressource/Site_edaphic_data/site_coord_MAPP-ecoR.csv",row.names = F)
+
+site_ecoregions <- read.csv("../../ressource/Site_edaphic_data/MAPP_ecoR_with_Ecoregions.csv")
+
+site_ecoregions %<>% 
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))%>% # reformat 1 into 001 and 64 to 064 etc...
+    mutate(Sample=ifelse(nchar(Sample)<3,paste0("0",Sample),Sample))
+site_ecoregions %<>% 
+    mutate(Sample=ifelse(grepl("^8",Sample),paste0("0",Sample),Sample)) # fix 87a and 87b to 087a and 087b
+
+site_coordinates <- left_join(site_coordinates,site_ecoregions,by = "Sample")
 ```
 
 
@@ -918,14 +883,14 @@ ggsave("Figures/diagnose_singletons.png",singleton_plots,width = 14,height = 14)
 ```
 
 ```{r}
-rm(alpha_plot,alpha,alpha_plot_pct,data_temp,df_tmp,donut_comp,meco_16s_singl,plot_data,singleton_plots,singletons,n_non_single_asv,n_non_single_reads,n_single_asv,n_single_reads,non_single_asv,single_asv,use_taxanames)
+rm(alpha_plot,alpha,alpha_plot_pct,data_temp,df_tmp,donut_comp,meco_16s_singl,plot_data,singleton_plots,singletons,n_non_single_asv,n_non_single_reads,n_single_asv,n_single_reads,non_single_asv,single_asv,use_taxanames,site_ecoregions)
 ```
 
 
 re-compute for each samples the sequencing depth and richness
 ```{r}
 meco_16s$sample_table %<>%
-    select(sample_id,nb_reads,nb_asvs,Sample,Y,X) %>%
+    dplyr::select(sample_id,nb_reads,nb_asvs,Sample,Y,X) %>%
     mutate(nb_reads=colSums(meco_16s$otu_table),
            nb_asvs=colSums(meco_16s$otu_table>0))
 ```
@@ -1052,7 +1017,7 @@ ggsave(paste0("../paper_16s/Figures/procruste_",i,".png"),procr,height = 5, widt
 ```
 
 ```{r}
-rm(ctest,mds_16s,mds_filtered,mds_ns,p1,p2,p1.solution,list_pro_title,pro_plot_com,pro_tmp,pro.error,procr,procrustes_res,list_procrustes_com,t1,t2,t3,quantiles)
+rm(ctest,mds_16s,mds_filtered,mds_ns,p1,p2,p1.solution,list_pro_title,pro_plot_com,pro_tmp,pro.error,procr,procrustes_res1,procrustes_res2,procrustes_res3,list_procrustes_com,t1,t2,t3,quantiles)
 ```
 
 ## Alpha-div
@@ -1434,7 +1399,7 @@ tibble::enframe(list_nc)%>%
   mutate(nbc=ifelse(row_number()%%2,value,''),
          indxval=ifelse(!row_number()%%2,value,'')) %>% 
  summarise_all(funs(trimws(paste(., collapse = ''))))%>%
-  select(-c(2))%>%
+  dplyr::select(-c(2))%>%
   mutate(across(.cols=c(2,3),.fns=as.numeric))%>%
   ggplot(aes(x=name,y=nbc))+
   geom_point()+
@@ -2168,6 +2133,25 @@ for(i in pathways_db){
 }
 ```
 
+## Ubiquist ASVs
+
+```{r}
+ubiquist_asvs <- meco_16s_relabfiltered$otu_table%>%
+  mutate(name=rownames(.))%>%
+  reshape2::melt()%>%
+  group_by(name)%>%
+  summarise(prev=sum(value>0))%>%
+  filter(prev>175)
+
+meco_16s_relabfiltered$tax_table%>%
+  filter(rownames(.)%in%ubiquist_asvs$name)%>%
+  dplyr::select(Kingdom_conf_rdp,Phylum_conf_rdp,Order_conf_rdp,Family_conf_rdp,Genus_conf_rdp)%>%
+  mutate(name=rownames(.))%>%
+  reshape2::melt(id.vars = "name")%>%
+  mutate(known=ifelse(nchar(value)<4,"no","yes"))%>%
+  ggplot(aes(x=variable,y=name,fill=known))+
+  geom_tile()
+```
 
 
 # D - Sites
@@ -2303,7 +2287,8 @@ site_data_raw %<>%
     arrange(Sample)# fix sample ID to match the format of other MAPP datasets
 
 site_data <- site_data_raw %>% filter(Sample%in%meco_16s_ns$sample_table$Sample)%>% # replace the NA placeholder -9999 with NAs
-    mutate(across(.cols= colnames(site_data_raw),.fns = ~replace(., . ==  -9999 , NA)))
+    mutate(across(.cols= colnames(site_data_raw),.fns = ~replace(., . ==  -9999 , NA)))%>%
+  left_join(site_coordinates)
 ```
 
 
@@ -2312,7 +2297,7 @@ site_data <- site_data_raw %>% filter(Sample%in%meco_16s_ns$sample_table$Sample)
 
 ```{r}
 site_data %<>% # remove short term variable of wrong months from site data
-    select(names(site_data)[!grepl('06|07|08|09|10', names(site_data))])%>%
+    dplyr::select(names(site_data)[!grepl('06|07|08|09|10', names(site_data))])%>%
     rename(soil_moisture_04=soil_moisture_03_1)
 
 var_missing_val <- as.data.frame(colSums(is.na(site_data)))%>% # plot NAs counts and %of variables
@@ -2367,9 +2352,9 @@ months_we_want <- c("03","04","05") # march/april/may  (1 to 4 months before sam
 var_st <- colnames(site_data)[grep('03|04|05', names(site_data))] # get columns of monthly variables
 
 site_data_lt <- site_data%>% # subset long term variables
-    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))
+    dplyr::select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))
 site_data_st <- site_data%>% # subset chort term variables
-    select(all_of(c("X","Y",var_st,"bulk","gHM","height","ph","soc","water")))
+    dplyr::select(all_of(c("X","Y",var_st,"bulk","gHM","height","ph","soc","water")))
 ```
 
 ### Impute missing data
@@ -2379,22 +2364,22 @@ We perform missing data imputation using missMDA package.
 ```{r} 
 # Get the number of PCs we need to infer our missing values
 ncp_data_lt <- site_data %>%  
-    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
+    dplyr::select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
     missMDA::estim_ncpPCA(scale=T)
 
 ncp_data_st <- site_data %>% 
-    select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
+    dplyr::select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water"))) %>%
     mutate(across(everything(),as.numeric))%>%
     missMDA::estim_ncpPCA(scale=T)
 
 # Impute our missing values and store them in a new 'imputed' data frame
 imputed_data_lt <- site_data %>% 
-    select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))%>%
+    dplyr::select(all_of(c("X","Y",var_lt,"bulk","gHM","height","ph","soc","water")))%>%
     missMDA::imputePCA(ncp=5,scale=T)
 imputed_data_lt <- imputed_data_lt$completeObs %>% as.data.frame()
 
 imputed_data_st <- site_data %>% 
-    select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water")))%>%
+    dplyr::select(all_of(c("X","Y",var_st,var_lt,"bulk","gHM","height","ph","soc","water")))%>%
     missMDA::imputePCA(ncp=5,scale=T)
 imputed_data_st <- imputed_data_st$completeObs %>% as.data.frame()
 ```
@@ -2405,7 +2390,7 @@ We need to test if imputed before or on mean changes a lot to imputed values.
 ```{r}
 # Test by averaging short term variables before imputation
 site_data_st_before_imputation <- site_data %>% 
-    select(all_of(c("X","Y",var_lt,var_st,"bulk","gHM","height","ph","soc","water")))%>%
+    dplyr::select(all_of(c("X","Y",var_lt,var_st,"bulk","gHM","height","ph","soc","water")))%>%
     mutate(across(.cols=all_of(var_lt),
                   ~get(paste0(gsub("_lt","_",cur_column()), months_we_want[1]))+
                        get(paste0(gsub("_lt","_",cur_column()), months_we_want[2]))+
@@ -2415,18 +2400,18 @@ site_data_st_before_imputation <- site_data %>%
 
 var_to_remove <- colnames(site_data_st_before_imputation)[grep('_[0-9]{2}', names(site_data_st_before_imputation))]
 site_data_st_before_imputation %<>%
-    select(-one_of(var_to_remove))%>% 
+    dplyr::select(-one_of(var_to_remove))%>% 
     rename_with(~ stringr::str_remove(., "_lt_"), everything())
 
 st <- names(site_data_st_before_imputation)[grep('_st', names(site_data_st_before_imputation))]
 ncp_data_before_st <- site_data_st_before_imputation %>% 
-    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water"))) %>%
+    dplyr::select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water"))) %>%
     mutate(across(everything(),as.numeric))%>%
     missMDA::estim_ncpPCA(scale=T)
 
 
 site_data_st_before_imputation_imputed <- site_data_st_before_imputation %>% 
-    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))%>%
+    dplyr::select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))%>%
     missMDA::imputePCA(ncp=3,scale=T)
 site_data_st_before_imputation_imputed <- site_data_st_before_imputation_imputed$completeObs %>% as.data.frame()
 
@@ -2441,9 +2426,9 @@ site_data_st_after_imputation <- imputed_data_st %>%
 
 var_to_remove <- colnames(site_data_st_after_imputation)[grep('_[0-9]{2}', names(site_data_st_after_imputation))]
 site_data_st_after_imputation %<>%
-    select(-one_of(var_to_remove))%>% 
+    dplyr::select(-one_of(var_to_remove))%>% 
     rename_with(~ stringr::str_remove(., "_lt_"), everything())%>%
-    select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))
+    dplyr::select(all_of(c("X","Y",st,"bulk","gHM","height","ph","soc","water")))
 ```
 
 ## Select variables
@@ -2482,6 +2467,46 @@ for(j in data_sets){
 ```
 
 ### Var correlation
+
+```{r}
+cor_fun <- function(data, mapping, method="pearson", use="pairwise", sz=5, ...){
+    
+    # grab data
+    x <- eval_data_col(data, mapping$x)
+    y <- eval_data_col(data, mapping$y)
+    
+    # calculate correlation: for significance stars
+    corr <- cor.test(x, y, method=method)
+    est <- corr$estimate
+    
+    # get significance stars
+
+        stars <- c("***", "**", "*", "")[findInterval(corr$p.value, c(0, 0.001, 0.01, 0.05, 1))]
+        lbl <- stars
+
+    # calculate correlation: for colored tiles
+    corr <- cor(x, y, method=method, use=use)
+    
+    # calculate color based on correlation value
+    # corr = -1 => blue, 
+    # corr =  0 => white, 
+    # corr = +1 => red, 
+    colFn <- colorRampPalette(c("blue", "white", "red"), interpolate ='spline')
+    fill <- colFn(100)[findInterval(corr, seq(-1, 1, length=100))]
+    fill[which(stars=="")] <- "grey"
+    ggplot(data = data, mapping = mapping, ...) + 
+        theme_void() +
+        annotate("text",
+                 x=mean(x, na.rm=TRUE),
+                 y=mean(y, na.rm=TRUE),
+                 label=lbl,
+                 ...) +
+        theme(panel.background = element_rect(fill=fill,  # to fill background of panel with color
+                                              colour=NA), # to remove border of panel
+              panel.grid.major = element_blank())
+}
+```
+
 
 ```{r}
 data_sets <- c("site_data_lt",
@@ -2525,25 +2550,71 @@ for(j in data_sets){
 
 Soil moisture imputation strategies changes its relations with other variables: REMOVE IT.
 
+
+### Xplore Eco-Regions
+
+```{r}
+length(unique(site_data$ECO_NAME))
+unique(site_data$ECO_NAME)
+length(unique(site_data$BIOME_NAME))
+unique(site_data$BIOME_NAME)
+```
+
+
+```{r}
+site_data%>%
+  filter(Country%in%c("Russia","Norway"))%>%
+  dplyr::select(Sample,Country,BIOME_NAME,ECO_NAME,X,Y,COLOR)
+
+# 20/21 and 22 are samples from Primorskii in Russia which is in a Boreal Forest/ Taïga - Scandinavian and Russian Taïga
+
+# 92/93 and 94 are from Sultindvik in Norway and are Scandinavian Montane Birch forest and grasslands / Tundra
+
+site_data[which(site_data$Sample%in%c("020","021","022")),"BIOME_NAME"] <- "Boreal Forests/Taiga"
+site_data[which(site_data$Sample%in%c("020","021","022")),"ECO_NAME"] <- "Scandinavian and Russian taiga"
+
+
+site_data[which(site_data$Sample%in%c("092","093","094")),"BIOME_NAME"] <- "Tundra"
+site_data[which(site_data$Sample%in%c("092","093","094")),"ECO_NAME"] <- "Scandinavian Montane Birch forest and grasslands"
+```
+
+
+
 ### PCA sites
 
 ```{r}
+arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
+  u <- c(range(data[,1], range(data[,2])))
+  u <- u - rep(at, each = 2)
+  r <- c(range(arrows[, 1], na.rm = TRUE), range(arrows[, 2], na.rm = TRUE))
+  rev <- sign(diff(u))[-2]
+  if (rev[1] < 0)
+    u[1:2] <- u[2:1]
+  if (rev[2] < 0)
+    u[3:4] <- u[4:3]
+  u <- u/r
+  u <- u[is.finite(u) & u > 0]
+  fill * min(u)
+}
+```
+
+```{r}
 pca_sites_lt <- imputed_data_lt %>% 
-    select(!grep('_st', names(imputed_data_lt)))%>%
-    select(!grep('soil_moisture',colnames(.)))%>%
-    select(-c(X,Y))%>%
+    dplyr::select(!grep('_st', names(imputed_data_lt)))%>%
+    dplyr::select(!grep('soil_moisture',colnames(.)))%>%
+    dplyr::select(-c(X,Y))%>%
     FactoMineR::PCA(scale.unit = T,
                     graph = F)
 
 pca_sites_before_st <- site_data_st_before_imputation_imputed %>% 
-    select(grep('_st', names(site_data_st_before_imputation_imputed)))%>%
-    select(!grep('soil_moisture',colnames(.)))%>%
+    dplyr::select(grep('_st', names(site_data_st_before_imputation_imputed)))%>%
+    dplyr::select(!grep('soil_moisture',colnames(.)))%>%
     FactoMineR::PCA(scale.unit = T,
                     graph = F) # NAs
 
 pca_sites_after_st <- site_data_st_after_imputation %>% 
-    select(grep('_st', names(site_data_st_after_imputation)))%>%
-    select(!grep('soil_moisture',colnames(.)))%>%
+    dplyr::select(grep('_st', names(site_data_st_after_imputation)))%>%
+    dplyr::select(!grep('soil_moisture',colnames(.)))%>%
     FactoMineR::PCA(scale.unit = T,
                     graph = F)
 ```
@@ -2553,20 +2624,22 @@ data_sets <- c("pca_sites_lt","pca_sites_before_st","pca_sites_after_st")
 col <- c("darkorange","cornflowerblue","darkorchid4")
 pca_site_biplot <- NULL
 scree_plot_list <- NULL
-
+pca_site_biplot_eco <- NULL
+biomes_color <- c("#F6D55C","#ED553B","#173F5F","#3CAEA3","#20639B")
 for(i in data_sets){
     pca_tmp <- get(i)
     
     eig <- pca_tmp$eig
     coord_pca <- as.data.frame(pca_tmp$ind$coord)
     coord_pca$site <- site_data$Sample
-    coord_pca$country <- site_data$Country
-    
+    coord_pca$biome_name <- site_data$BIOME_NAME
+    coord_pca$eco_name <- site_data$ECO_NAME
+
     mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
                     pca_tmp$ind$coord)
     
     pca_site_biplot[[i]] <- ggplot()+
-        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color=col[match(i,data_sets)])+
+        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=biome_name))+
         theme_classic2()+
         geom_vline(xintercept = 0,lty=2)+
         geom_hline(yintercept = 0,lty=2)+
@@ -2581,14 +2654,42 @@ for(i in data_sets){
                      colour = "black" 
         )+
         ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
-                                 aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
-                                     y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                                 aes(x = Dim.1*1.1, # nudge a bit the coordinates so that they're not on the arrows
+                                     y = Dim.2*1.1,
                                      label = var),
                                  max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
         ggtitle(paste0("Biplot sites ",i))+
-        theme(plot.title = element_text(face="bold"))
+        theme(plot.title = element_text(face="bold"))+
+      scale_color_manual(values=biomes_color)
     
     scree_plot_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = col[match(i,data_sets)], barcolor=col[match(i,data_sets)])
+    
+    
+    
+    pca_site_biplot_eco[[i]] <- ggplot()+
+        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=eco_name))+
+        theme_classic2()+
+        geom_vline(xintercept = 0,lty=2)+
+        geom_hline(yintercept = 0,lty=2)+
+        # ggrepel::geom_label_repel(data=filter(coord_pca,Dim.2< -3),aes(x=Dim.1,y=Dim.2,label=site))+
+        xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+        ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+        geom_segment(data= as.data.frame(pca_tmp$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+                     lineend = "round", 
+                     linejoin = "round",
+                     linewidth = .75, 
+                     arrow = arrow(length = unit(0.2, "inches")),
+                     colour = "black" 
+        )+
+        ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
+                                 aes(x = Dim.1*1.1, # nudge a bit the coordinates so that they're not on the arrows
+                                     y = Dim.2*1.1,
+                                     label = var),
+                                 max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+        ggtitle(paste0("Biplot sites ",i))+
+        theme(plot.title = element_text(face="bold"))+
+      scale_fill_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  stat_ellipse(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=eco_name))  
 }
 ```
 
@@ -2610,12 +2711,16 @@ site_data_st_before_imputation_imputed$Sample <- site_data$Sample
 imputed_data_lt$Sample <- site_data$Sample
 combined <- site_data_st_before_imputation_imputed%>%
     left_join(imputed_data_lt, by="Sample", suffix=c("",".y"))%>%
-    select(-ends_with(".y"))%>%
+    dplyr::select(-ends_with(".y"))%>%
     left_join(site_data[,1:4])%>%
     relocate(Sample)
 
 combined%<>%
     mutate(ph=ph/100)
+combined$BIOME_NAME <- site_data$BIOME_NAME
+combined$ECO_NAME <- site_data$ECO_NAME
+combined$X2 <- site_data$X2
+combined$Y2 <- site_data$Y2
 
 var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
 var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
@@ -2628,44 +2733,46 @@ var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
 pca_site_var <- NULL
 scree_plot_var_list <- NULL
 for(i in c("st","lt")){
-    
-    var2use <- get(paste0("var_",i))
-    pca_tmp <- combined %>% 
-        dplyr::select(all_of(c("ph",var2use)))%>%
-        FactoMineR::PCA(scale.unit = T,
-                        graph = F)
-    
-    eig <- pca_tmp$eig
-    coord_pca <- as.data.frame(pca_tmp$ind$coord)
-    coord_pca$site <- combined$Sample
-
-    mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
-                    pca_tmp$ind$coord)
-    
-    pca_site_var[[i]] <- ggplot()+
-        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="darkorchid4")+
-        theme_classic2()+
-        geom_vline(xintercept = 0,lty=2)+
-        geom_hline(yintercept = 0,lty=2)+
-        xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
-        ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
-        geom_segment(data= as.data.frame(pca_tmp$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
-                     lineend = "round", 
-                     linejoin = "round",
-                     linewidth = .75, 
-                     arrow = arrow(length = unit(0.2, "inches")),
-                     colour = "black" 
-        )+
-        ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
-                                 aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
-                                     y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
-                                     label = var),
-                                 max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
-        ggtitle(paste0("Biplot sites ",i))+
-        theme(plot.title = element_text(face="bold"))
-    
-    scree_plot_var_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "darkorchid4", barcolor="darkorchid4")
-    ggsave(paste0("Figures/pca_",i,".png"),pca_site_var[[i]]+scree_plot_var_list[[i]],width = 12)
+  
+  var2use <- get(paste0("var_",i))
+  pca_tmp <- combined %>% 
+    dplyr::select(all_of(c("ph",var2use)))%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F)
+  
+  eig <- pca_tmp$eig
+  coord_pca <- as.data.frame(pca_tmp$ind$coord)
+  coord_pca$site <- combined$Sample
+  coord_pca$biome_name <- combined$BIOME_NAME
+  
+  mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
+                  pca_tmp$ind$coord)
+  
+  pca_site_var[[i]] <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=biome_name))+
+    theme_classic2()+
+    geom_vline(xintercept = 0,lty=2)+
+    geom_hline(yintercept = 0,lty=2)+
+    xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+    ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+    geom_segment(data= as.data.frame(pca_tmp$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+                 lineend = "round", 
+                 linejoin = "round",
+                 linewidth = .75, 
+                 arrow = arrow(length = unit(0.2, "inches")),
+                 colour = "black" 
+    )+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
+                             aes(x = Dim.1*1.1, # nudge a bit the coordinates so that they're not on the arrows
+                                 y = Dim.2*1.1,
+                                 label = var),
+                             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    ggtitle(paste0("Biplot sites ",i))+
+    theme(plot.title = element_text(face="bold"))+
+    scale_color_manual(values=biomes_color)
+  
+  scree_plot_var_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "darkorchid4", barcolor="darkorchid4")
+  ggsave(paste0("Figures/pca_",i,".png"),pca_site_var[[i]]+scree_plot_var_list[[i]],width = 12)
 }
 ```
 ## Cluster site
@@ -2737,8 +2844,8 @@ for(i in c("st","lt")){
                  colour = "black" 
     )+
     ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
-                             aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
-                                 y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+                             aes(x = Dim.1*1.1, # nudge a bit the coordinates so that they're not on the arrows
+                                 y = Dim.2*1.1,
                                  label = var),
                              max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
     ggtitle(paste0("Biplot sites ",i))+
@@ -2761,29 +2868,12 @@ clust_heatmap <- site_bp%>%
     scale_y_discrete(limits=rev)+
     theme_minimal()+
     combined%>%
-    select(c(Country,Sample))%>%
-    ggplot(aes(x="Country",y=Sample,fill=Country))+
+    select(c(BIOME_NAME,Sample))%>%
+    ggplot(aes(x="Biomes",y=Sample,fill=BIOME_NAME))+
     geom_tile()+
     theme_void()+
-    scale_fill_manual(values=c("#7f61d3",
-                               "#84b83a",
-                               "#be4eb2",
-                               "#4db955",
-                               "#d54272",
-                               "#6abf87",
-                               "#d14b33",
-                               "#3fc1bf",
-                               "#d99037",
-                               "#616bba",
-                               "#b8af3d",
-                               "#c387d1",
-                               "#5a8233",
-                               "#dd81a0",
-                               "#37835d",
-                               "#9a4769",
-                               "#c6a96d",
-                               "#619dd7"),
-                      name="Country")+
+    scale_fill_manual(values=biomes_color,
+                      name="Biomes")+
     plot_layout(guides="collect",widths = c(5,1))
 
 
@@ -2839,6 +2929,39 @@ p1 <- combined%>%
 ggsave("Figures/CV_var.png",p1)
 ```
 
+
+## Site temp/prec
+
+```{r}
+combined%>%
+  ggplot(aes(x=tmmx_lt,y= pr_lt, color = BIOME_NAME))+
+  geom_point()+
+  scale_color_manual(values = biomes_color)+
+  theme_classic2()+
+  ylab("Monthly precipitation (mm)")+
+  xlab("Monthly max temperature (C°)")
+
+  combined%>%
+  ggplot(aes(x=tmmx_lt,y= pr_lt, color = ECO_NAME))+
+  geom_point()+
+  scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  theme_classic2()+
+  ylab("Monthly precipitation (mm)")+
+  xlab("Monthly max temperature (C°)")
+  
+  
+  combined%>%
+  ggplot(aes(x=tmmx_lt,y= pr_lt, color = Country))+
+  geom_point()+
+  scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  theme_classic2()+
+  ylab("Monthly precipitation (mm)")+
+  xlab("Monthly max temperature (C°)")
+```
+
+
+
+
 # E -  Save cleaned datasets
 
 I need meco_16s_ns which is our communities with no singletons.
@@ -2852,6 +2975,7 @@ save(meco_16s_ns,file = "outputs/meco_16s.RData")
 save(meco_16s_relabfiltered,file = "outputs/meco_16s_relabfiltered.RData")
 save(combined,file = "outputs/site_data_imputed.RDS")
 save(non_targ_asvs, file = "non_targ_asvs.rds")
+write.csv(combined,file = "outputs/combined.csv")
 rm(list=ls())
 gc()
 ```
@@ -2863,28 +2987,7 @@ load("outputs/site_data_imputed.RDS")
 ```
 
 ```{r}
-country_color <- c('#e6194b',
-                   '#3cb44b',
-                   '#ffe119',
-                   '#4363d8',
-                   '#f58231', 
-                   '#911eb4', 
-                   '#46f0f0',
-                   '#f032e6', 
-                   '#bcf60c',
-                   '#fabebe', 
-                   '#008080', 
-                   '#e6beff', 
-                   '#9a6324',
-                   '#fffac8',
-                   '#800000', 
-                   '#aaffc3',
-                   '#808000',
-                   '#ffd8b1', 
-                   '#000075',
-                   '#808080', 
-                   '#ffffff',
-                   '#000000')
+biomes_color <- c("#F6D55C","#ED553B","#173F5F","#3CAEA3","#20639B")
 ```
 
 # -----------------------------------
@@ -2893,53 +2996,264 @@ country_color <- c('#e6194b',
 
 # A - 16s and sites relations
 
-## Alpha div patterns
-
 ```{r}
-paldiv <- meco_16s_ns$sample_table%>%
-  ggplot(aes(x=X,y=nb_asvs))+
-  geom_point()+
-  theme_classic2()+
-  labs(x="Latitude",y="Richness")+
-  geom_smooth(method='lm')+
-  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p"))) +
-meco_16s_ns$sample_table%>%
-  ggplot(aes(x=Y,y=nb_asvs))+
-  geom_point()+
-  theme_classic2()+
-  labs(x="Longitude",y="Richness")+
-  geom_smooth(method='lm')+
-  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))
+names_df_clean <-data.frame(fullname= c("Geographic","pH","Evapo-transpiration","Precipitation","Snow water equivalent", "T° min","T° max","Vapor pressure deficit", "Enhanced vegetation index", "Fraction of absorbed photosynthetically active radiation","Growth primary production"),
+                            Var2= c("Geographic","ph","aet","pr","swe", "tmmn","tmmx","vpd", "evi", "fpar","gpp"),
+                            midname= c("Geographic","pH","AET","Precipitation","Snow water eq","T° min","T° max","VPD","eVI","FPAR","GPP"))
 
-paldiv
 ```
+
 
 ```{r}
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
 # Subset the world data to include only the specified latitude range
-cropping <- as(raster::extent(-180, 180, 28, 90), "SpatialPolygons")
+cropping <- as(raster::extent(-180, 180, 20, 90), "SpatialPolygons")
 
 
 world_subset <- raster::crop(as_Spatial(world),cropping)
 # Create a Lambert azimuthal equal-area projection centered on the North Pole
 lambert_proj <- st_crs("+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs")
 world_lambert <- st_transform(st_as_sf(world_subset), crs = lambert_proj)
+```
+
+## Formula
+
+```{r}
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
+var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
+var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
+
+XFormula_lt <- paste(var_lt,sep="", collapse = "+")
+XFormula_st <- paste(var_st,sep="", collapse = "+")
+
+XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ log(nb_reads)")
+XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ log(nb_reads)")
+```
+
+## Different variable
+
+```{r}
+p_var_biomes <- NULL
+for(i in c("_st","_lt")){
+  var_tmp <- get(paste0("var",i))
+  combined_tmp <- combined[,c("ph",var_tmp,"BIOME_NAME")]
+  combined_tmp_melted <- reshape2::melt(combined_tmp)
+  combined_tmp_melted$variable <- gsub(i,"",combined_tmp_melted$variable)
+  combined_tmp_melted%<>%
+    left_join(rename(names_df_clean,variable=Var2))
+  
+   p_var_biomes[[i]] <- combined_tmp_melted%>%
+     filter(!is.na(fullname))%>%
+     ggplot(aes(x=BIOME_NAME,y=value,color=BIOME_NAME))+
+      geom_boxplot(outlier.shape = NA)+
+      geom_jitter(width=.25)+
+      scale_color_manual(values = biomes_color, name="Biomes")+
+      theme_classic2()+
+      xlab("")+
+      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+     facet_wrap("fullname",scales = "free_y")
+
+}
+```
+
+```{r}
+p_rich_var_biomes <- NULL
+nb_asvs_ns <- colSums(meco_16s_ns$otu_table>0)
+df_nb_asvs <- data.frame(nb_asvs_ns = nb_asvs_ns,Sample = gsub("[A-Z]|-|(?=_).*","",names(nb_asvs_ns),perl=T))
+df_nb_asvs%<>%
+  left_join(data.frame(nb_asvs_relabfilt = colSums(meco_16s_relabfiltered$otu_table>0),Sample = gsub("[A-Z]|-|(?=_).*","",names(colSums(meco_16s_relabfiltered$otu_table>0)),perl=T)))
+
+combined%<>%
+  left_join(df_nb_asvs)
+
+for(i in c("_st","_lt")){
+  var_tmp <- get(paste0("var",i))
+  combined_tmp <- combined[,c("ph",var_tmp,"BIOME_NAME","nb_asvs_relabfilt","nb_asvs_ns")]
+  combined_tmp_melted <- reshape2::melt(combined_tmp,id.vars=c("BIOME_NAME","nb_asvs_relabfilt","nb_asvs_ns"))
+  combined_tmp_melted$variable <- gsub(i,"",combined_tmp_melted$variable)
+  combined_tmp_melted%<>%
+    left_join(rename(names_df_clean,variable=Var2))
+  
+  p_rich_var_biomes[[i]][["filtered"]] <- combined_tmp_melted%>%
+    filter(!is.na(fullname))%>%
+    ggplot(aes(x=value,y=nb_asvs_relabfilt))+
+    geom_point(aes(color=BIOME_NAME))+
+    geom_smooth(method = 'lm')+
+    scale_color_manual(values = biomes_color, name="Biomes")+
+    theme_classic2()+
+    xlab("")+
+    ylab("ASV richness")+
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+    facet_wrap("fullname",scales = "free_x")+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))
+  
+  p_rich_var_biomes[[i]][["non_filtered"]] <- combined_tmp_melted%>%
+    filter(!is.na(fullname))%>%
+    ggplot(aes(x=value,y=nb_asvs_ns))+
+    geom_point(aes(color=BIOME_NAME))+
+    geom_smooth(method = 'lm')+
+    scale_color_manual(values = biomes_color, name="Biomes")+
+    theme_classic2()+
+    xlab("")+
+    ylab("ASV richness")+
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+    facet_wrap("fullname",scales = "free_x")+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))
+}
+```
 
 
-(sites <- st_as_sf(meco_16s_ns$sample_table, coords = c("X", "Y"), 
+## Moran's eigenvector with Adespatial
+
+```{r}
+library(adespatial)
+
+mat_dist <- codep::geodesics(combined[,c("X2","Y2")])
+mat_geo <- geodist::geodist(combined[,c("X2","Y2")],measure = 'geodesic')
+```
+
+
+```{r}
+# class(mat_geo) <- c("matrix","dist")
+mems <- dbmem(as.dist(mat_geo),MEM.autocor = "positive")
+mems2 <- dbmem(mat_dist,MEM.autocor = "positive")
+```
+
+```{r}
+df_mems <- mems
+class(df_mems) <- "data.frame"
+df_mems%<>%  
+  mutate(across(all_of(c(1:19)),.fns=~ifelse(.>0,"Pos","Neg"),.names = "{.col}_fill"))
+  
+df_mems$long <- combined$X2
+df_mems$lat <- combined$Y2
+df_mems%<>%
+  reshape2:: melt(id.vars = c('long','lat'))
+
+df_mems <- cbind(filter(df_mems,grepl("fill",variable)),filter(df_mems[,c(3,4)],!grepl("fill",variable)))
+names(df_mems) <- c("long","lat","var1","fillval","var2","value")
+df_mems$value <- as.numeric(df_mems$value)
+
+
+(df_mems <- st_as_sf(df_mems, coords = c("long", "lat"), 
                    crs = 4326, agr = "constant"))
-
-# Plot the map
-mappall <- ggplot() +
+ggplot() +
   geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data = sites, size = 3, shape = 23, aes(fill = nb_asvs),alpha=.7) +
-  ggtitle("MAPP 16s sites") +
-  theme(plot.title = element_text(hjust = 0.5, size = 16))+
+  geom_sf(data=df_mems, aes(fill=fillval,size=abs(value)),shape=22)+
+  facet_wrap(~var2)+
+  ggtitle("MEMs across sites") +
+  theme(plot.title = element_text(hjust = 0.5))+
   theme_minimal()+
   theme(panel.background = element_rect(fill = "azure"))+
-  scale_fill_viridis_c(limits = c(150, 1900), oob = scales::squish)
+  scale_fill_manual(values=c("black","white"))+
+  labs(size="MEM value", fill="MEM sign")
+```
 
+
+```{r}
+df_mems2 <- mems2
+class(df_mems2) <- "data.frame"
+df_mems2%<>%  
+  mutate(across(all_of(c(1:12)),.fns=~ifelse(.>0,"Pos","Neg"),.names = "{.col}_fill"))
+  
+df_mems2$long <- combined$X2
+df_mems2$lat <- combined$Y2
+df_mems2%<>%
+  reshape2:: melt(id.vars = c('long','lat'))
+
+df_mems2 <- cbind(filter(df_mems2,grepl("fill",variable)),filter(df_mems2[,c(3,4)],!grepl("fill",variable)))
+names(df_mems2) <- c("long","lat","var1","fillval","var2","value")
+df_mems2$value <- as.numeric(df_mems2$value)
+
+
+(df_mems2 <- st_as_sf(df_mems2, coords = c("long", "lat"), 
+                   crs = 4326, agr = "constant"))
+
+ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data=df_mems2, aes(fill=fillval,size=abs(value)),shape=22)+
+  facet_wrap(~var2)+
+  ggtitle("MEMs across sites") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))+
+  scale_fill_manual(values=c("black","white"))+
+  labs(size="MEM value", fill="MEM sign")
+
+```
+
+
+
+```{r}
+test <- moran.randtest(mems, nrepet = 999, p.adjust.method = "holm") # 4 first are significant (positive eigenvalues)
+
+p1 <- data.frame(test$names,test$adj.pvalue,test$obs)%>%
+ggplot(aes(x=reorder(test.names,-test.obs),y=test.adj.pvalue))+
+  geom_point()+
+  xlab("")+
+  ylab("P values")+
+  theme(axis.text.x = element_blank())+
+  geom_hline(yintercept = 0.05,color="darkorange2")
+p2 <-   data.frame(test$names,test$obs)%>%
+ggplot(aes(x=reorder(test.names,-test.obs),y=test.obs))+
+  geom_point()+
+  xlab("")+
+  ylab("Moran's I")+
+  theme(axis.text.x = element_text(angle = 45,vjust=1,hjust=1))
+
+p1/p2
+
+
+p <- FactoMineR::PCA(mems[,1:12],graph=F)%>%
+  factoextra::fviz_pca_biplot()/(
+    FactoMineR::PCA(mems[,1:12],graph=F)%>%
+      factoextra::fviz_contrib("var",axes = 1)+
+      FactoMineR::PCA(mems[,1:12],graph=F)%>%
+      factoextra::fviz_contrib("var",axes = 2))
+ggsave("Figures/MEMs_PCA.png",p)
+
+mem_long <- gather(mems, MEM, Value, MEM1:(ncol(mems)-2))
+
+p <- FactoMineR::PCA(mems2[,1:12],graph=F)%>%
+  factoextra::fviz_pca_biplot()/(
+    FactoMineR::PCA(mems2[,1:12],graph=F)%>%
+      factoextra::fviz_contrib("var",axes = 1)+
+      FactoMineR::PCA(mems2[,1:12],graph=F)%>%
+      factoextra::fviz_contrib("var",axes = 2))
+ggsave("Figures/mems2_PCA.png",p)
+```
+
+
+## Alpha div patterns
+
+```{r}
+paldiv <- meco_16s_ns$sample_table%>%
+  left_join(combined)%>%
+  ggplot(aes(x=X,y=nb_asvs))+
+  geom_point(aes(color=BIOME_NAME))+
+  theme_classic2()+
+  labs(x="Latitude",y="Richness")+
+  geom_smooth(method='lm')+
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p"))) +
+  scale_color_manual(values = biomes_color)+
+meco_16s_ns$sample_table%>%
+  left_join(combined)%>%
+  ggplot(aes(x=Y,y=nb_asvs))+
+  geom_point(aes(color=BIOME_NAME))+
+  theme_classic2()+
+  labs(x="Longitude",y="Richness")+
+  geom_smooth(method='lm')+
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))+
+  scale_color_manual(values = biomes_color)
+
+paldiv+plot_layout(guides = "collect")
+```
+
+```{r}
+# Plot the map
 (sitesfil <- st_as_sf(meco_16s_relabfiltered$sample_table, coords = c("X", "Y"), 
                    crs = 4326, agr = "constant"))
 
@@ -2954,66 +3268,58 @@ mappfil <- ggplot() +
   theme(panel.background = element_rect(fill = "azure"))+
   scale_fill_viridis_c( oob = scales::squish)
 
-ggsave("Figures/map_full.png",mappall)
 ggsave("Figures/map_fil.png",mappfil)
 ```
 
-## ordi clust 
-
 ```{r}
-var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
-var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
-
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
-
-var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
-var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
-
-
-results_nbclust_lt <- NbClust::NbClust(scale(combined[c("ph",var_lt)]), distance = 'euclidean',method = "ward.D2")
-results_nbclust_st <- NbClust::NbClust(scale(combined[c("ph",var_st)]), distance = 'euclidean',method = "ward.D2")
-
-site_bp <- combined
-site_bp %<>% mutate(bp_lt = as.factor(results_nbclust_lt$Best.partition),
-                    bp_st = as.factor(results_nbclust_st$Best.partition))
+combined$nb_asvs <- colSums(meco_16s_ns$otu_table>0)
+combined$nb_reads <- colSums(meco_16s_ns$otu_table)
 ```
 
 
+
 ```{r}
-ordi_list <- NULL
-ordi_plots_sp <- NULL
-ordi_plots_sites <- NULL
-
-for(i in c("meco_16s_ns","meco_16s_relabfiltered")){
-  
-  data_tmp <- get(i)
-  data_tmp <- clone(data_tmp)
-  orditmp <- ordinate(file2meco::meco2phyloseq(data_tmp), "NMDS", "horn")
-  ordi_list[[i]] <- orditmp
-  data_tmp$sample_table %<>% mutate(dumb_group = "sample")
-  data_tmp$otu_table %<>% filter(rowSums(.)>1)
-  data_tmp$tidy_dataset()
-  
-
-  df_ordi_sites <- orditmp$points
-  df_ordi_sites %<>%
-      as.data.frame()%>%
-      mutate(Sample=gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
-      left_join(site_bp)%>%
-    mutate(bp_lt=as.factor(bp_lt),
-           bp_st=as.factor(bp_st))
-  
-  for(j in c("bp_lt","bp_st")){  
-    
-    ordi_plots_sites[[i]][[j]] <-  ggplot(df_ordi_sites,aes(x=MDS1,y=MDS2,color=!!df_ordi_sites[,j]))+
-      geom_point()+
-      theme_dark()+
-      # geom_text()+
-      scale_color_manual(values=c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080'),
-                         name=paste0("Partition based on ",gsub("part_","",j)," communities"))
-  }
-}
+ggplot(combined,aes(x=BIOME_NAME,y=nb_asvs,color=BIOME_NAME))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_color_manual(values=biomes_color, name="Biome")+
+  geom_jitter()+
+  theme_classic2()+
+  ylab("ASVs richness")+
+  xlab("")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+ggplot(combined,aes(x=BIOME_NAME,y=nb_reads,color=BIOME_NAME))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_color_manual(values=biomes_color, name="Biome")+
+  geom_jitter()+
+  theme_classic2()+
+  ylab("Sequencing depth")+
+  xlab("")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+  plot_layout(guides = "collect")
 ```
+
+```{r}
+ggplot(combined,aes(x=ECO_NAME,y=nb_asvs,color=ECO_NAME))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_color_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"), name="Biome")+
+  geom_jitter()+
+  theme_classic2()+
+  ylab("ASVs richness")+
+  xlab("")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+  facet_wrap(~BIOME_NAME,scales = "free_x")+
+ggplot(combined,aes(x=ECO_NAME,y=nb_reads,color=ECO_NAME))+
+  geom_boxplot(outlier.shape = NA)+
+  scale_color_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"), name="Biome")+
+  geom_jitter()+
+  theme_classic2()+
+  ylab("Sequencing depth")+
+  xlab("")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
+  plot_layout(guides = "collect")+
+  facet_wrap(~BIOME_NAME,scales = "free_x")
+```
+
 
 ## Cyto pattern
 
@@ -3037,9 +3343,10 @@ tmp$nb_asvs <- colSums(meco_16s_relabfiltered$otu_table>0)
 
 tmp%>%
   ggplot(aes(x=nb_asvs,y=Bacteria_AB_mL))+
-  geom_point()+
+  geom_point(aes(color=BIOME_NAME))+
   geom_smooth(method='lm')+
-  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))
+  ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))+
+  scale_color_manual(values=biomes_color)
 ```
 
 
@@ -3145,7 +3452,8 @@ for( i in c("meco_16s_ns","meco_16s_relabfiltered")){
     hmap <- d_tmp$otu_table%>%
         mutate(otus=rownames(.))%>%
         reshape2::melt()%>%
-        mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T))%>%
+        mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),
+               value=ifelse(value==0,NA,value))%>%
         ggplot(aes(x=variable,y=otus,fill=log(1+value)))+
         geom_tile()+
         scale_fill_viridis_c()+
@@ -3156,36 +3464,6 @@ for( i in c("meco_16s_ns","meco_16s_relabfiltered")){
 }
 ```
 
-
-```{r}
-meco_16s_ns$sample_table%<>%
-    left_join(site_bp)%>%
-    mutate(variable=sample_id)
-rownames(meco_16s_ns$sample_table) <- meco_16s_ns$sample_table$sample_id
-
-(meco_16s_ns$otu_table%>%
-    mutate(otus=rownames(.))%>%
-    reshape2::melt()%>%
-    mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T))%>%
-    ggplot(aes(x=variable,y=otus,fill=log(value)))+
-    geom_tile()+
-    scale_fill_viridis_c()+
-    theme_void())/(
-      meco_16s_ns$sample_table%>%
-        ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=Country))+
-        geom_tile()+
-        coord_flip()+
-        scale_fill_manual(values=country_color)+
-        guides(fill=guide_legend(ncol=3))+
-        theme_void())/(
-          meco_16s_ns$sample_table%>%
-            ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=bp_st))+
-            geom_tile()+
-            coord_flip()+
-            scale_fill_manual(values=c("darkgreen","darkorange3","darkorchid4"))+
-            theme_void())+
-  plot_layout(heights = c(9,1,1),guides = "collect")
-```
 
 ```{r}
 meco_16s_ns$otu_table%>%
@@ -3205,6 +3483,9 @@ min(quoi$prevalence)
 
 
 ```{r}
+meco_16s_ns$sample_table%<>%
+  left_join(combined,by = "Sample")
+
 (meco_16s_ns$otu_table%>%
    mutate(otus=rownames(.))%>%
    mutate(high_prev=ifelse(otus%in%otus_more50,"yes","nope"))%>%
@@ -3222,10 +3503,36 @@ min(quoi$prevalence)
    scale_y_continuous(expand=c(0,0))+
    ylab("Relative abundance within samples (%)"))/(
      meco_16s_ns$sample_table%>%
-       ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",variable,perl = T),fill=Country))+
+       ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",Sample,perl = T),fill=BIOME_NAME))+
        geom_tile()+
        coord_flip()+
-       scale_fill_manual(values=country_color)+
+       scale_fill_manual(values=biomes_color)+
+       theme_void())+        
+  guides(fill=guide_legend(ncol=3))+
+  plot_layout(heights = c(9,1),guides="collect")
+```
+```{r}
+(meco_16s_ns$otu_table%>%
+   mutate(otus=rownames(.))%>%
+   mutate(high_prev=ifelse(otus%in%otus_more50,"yes","nope"))%>%
+   group_by(high_prev)%>%
+   summarise(across(1:(ncol(.)-2),sum))%>%
+   mutate(across(where(is.numeric),~(./sum(.))*100))%>%
+   reshape2::melt(id.vars=c("high_prev"))%>%
+   ggplot(aes(x=variable,y=value,fill=high_prev))+
+   geom_bar(stat = "identity", position = "stack",width=1)+
+   scale_fill_manual(values=c("darkorange","darkorchid4"))+
+   theme_classic2()+
+   theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+         axis.title.x = element_blank())+
+   scale_y_continuous(expand=c(0,0))+
+   ylab("Relative abundance within samples (%)"))/(
+     meco_16s_ns$sample_table%>%
+       ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",Sample,perl = T),fill=ECO_NAME))+
+       geom_tile()+
+       coord_flip()+
+       scale_fill_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
        theme_void())+        
   guides(fill=guide_legend(ncol=3))+
   plot_layout(heights = c(9,1),guides="collect")
@@ -3235,18 +3542,6 @@ min(quoi$prevalence)
 ## LMM
 
 ```{r}
-var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
-var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vap","vpd","moist","height","evi","fpar","gpp","gHM","ph","water","soc")
-var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
-var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
-
-XFormula_lt <- paste(var_lt,sep="", collapse = "+")
-XFormula_st <- paste(var_st,sep="", collapse = "+")
-
-XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ log(nb_reads)")
-XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ log(nb_reads)")
-
 combined %<>% left_join(meco_16s_ns$sample_table)
 
 test <- lm(formula = XFormula_st,
@@ -3270,6 +3565,69 @@ df_test_pred %>%
 
 ```
 
+## envfit NMDS
+
+```{r}
+store_env_fit <- NULL
+for(i in c("_lt","_st")){
+  
+  var_tmp <- colnames(combined)[which(grepl(i,colnames(combined)))]
+  var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+  var_tmp <- var_tmp[which(gsub(i,"",var_tmp)%in%var_interest)]
+  
+  env <- combined[,var_tmp]
+  
+  for(j in c("filt","nonfilt")){
+    
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
+    }
+    p_title <- paste0("NMDS envfit ",ifelse(i=="_lt","long term ","short term "), ifelse(j=="filt", "filtered","non filtered"))
+    
+    com <- t(com_tmp$otu_table)
+    nmds <- metaMDS(com, distance="horn")
+    en <- envfit(nmds, env, permutations = 999, na.rm = TRUE)
+    
+    data.scores <- as.data.frame(scores(nmds)$sites)
+    data.scores%<>%mutate(Sample=gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))
+    data.scores%<>%left_join(combined)
+    
+    en_coord_cont  <-  as.data.frame(scores(en, "vectors")) * ordiArrowMul(en)
+    en_coord_cont$pvals <- en$vectors$pvals 
+    en_coord_cont$r2 <- en$vectors$r 
+    en_coord_cont %<>% mutate(signif=ifelse(pvals<=0.05,"sig","ns"))%>%
+      mutate(label=gsub(i,"",row.names(.)))%>%
+      left_join(rename(names_df_clean,label=Var2))
+    
+    store_env_fit[[i]][[j]] <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) + 
+      geom_point(data = data.scores, aes(colour = BIOME_NAME), size = 3, alpha = 0.8) + 
+      scale_colour_manual(values = biomes_color)  + 
+      geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2, lty = signif), 
+                   data = en_coord_cont, size =1, alpha = 0.5, colour = "grey30") +
+      scale_linetype_manual(values=c(2,1),name="Significance")+
+      geom_text(data = en_coord_cont, aes(
+        x = NMDS1*1.2,
+        y = NMDS2*1.2, 
+        label = midname), colour = "grey30", 
+                fontface = "bold") + 
+      theme(axis.title = element_text(size = 10, face = "bold", colour = "grey30"), 
+            panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "grey30"), 
+            axis.ticks = element_blank(), axis.text = element_blank(), legend.key = element_blank(), 
+            legend.title = element_text(size = 10, face = "bold", colour = "grey30"), 
+            legend.text = element_text(size = 9, colour = "grey30")) + 
+      labs(colour = "Country")+
+      ggtitle(p_title)
+    
+    ggsave(paste0("Figures/envfit",i,"_",j,".png"),store_env_fit[[i]][[j]],width = 8,height = 8)
+  }
+}
+```
+
+
+
+
 ## dbRDA
 
 ```{r}
@@ -3286,14 +3644,28 @@ arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
   u <- u[is.finite(u) & u > 0]
   fill * min(u)
 }
+```
 
 
+```{r}
 formulaZ <- c(XFormula_lt,XFormula_st)
 dbrda_site_biplot <- NULL
-
-for(i in formulaZ){
+for(i in c("_lt","_st")){
+  
+  var_tmp <- colnames(combined)[which(grepl(i,colnames(combined)))]
+  var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+  var_tmp <- var_tmp[which(gsub(i,"",var_tmp)%in%var_interest)]
+  
+  for(j in c("filt","nonfilt")){
     
-    formula_tmp <- paste0("labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+",gsub("\\+ nb_reads.*$|nb_asvs ~","",i))
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
+    }
+    p_title <- paste0("dbRDA ",ifelse(i=="_lt","long term ","short term "), ifelse(j=="filt", "filtered","non filtered"))
+    
+    formula_tmp <- paste0("labdsv::hellinger(t(com_tmp$otu_table))~Condition(nb_reads)+ph+",paste0(var_tmp, collapse = "+"))
     dbrda_tmp <- dbrda(formula=formula(formula_tmp),data=combined, distance="horn") # full model with morisita horn distance based on hellinger transformed data
     
     #get eigen values of axes
@@ -3308,45 +3680,118 @@ for(i in formulaZ){
                     fort_rda_tmp[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
     fort_rda_tmp[want, vars] <- mul * fort_rda_tmp[want, vars] # scale the scores 
     
+    fort_rda_tmp%<>%
+      mutate(label=gsub(i,"",label))%>%
+      mutate(label=gsub("[A-Z]|-|(?=_).*","",label,perl=T))%>%
+      left_join(rename(names_df_clean,label=Var2))%>%
+      left_join(rename(combined,label=Sample))
     
-    dbrda_site_biplot[[formula_tmp]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
-        geom_point(data = cbind(subset(fort_rda_tmp, score == "sites"), # add points (sites) corresponding to samples
-                                country=combined$Country), 
-                   aes(color = country), 
-                   size = 3) +
-        geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
-                     aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
-                     lineend = "round", 
-                     linejoin = "round",
-                     linewidth = .75, 
-                     arrow = arrow(length = unit(0.2, "inches")),
-                     colour = "black" ) +
-        coord_fixed()+ # fix proportion between axis units
-        geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
-                  aes(x = ifelse(dbRDA1<0,dbRDA1*1.2,dbRDA1*1.2), # nudge a bit the coordinates so that they're not on the arrows
-                      y = ifelse(dbRDA2<0,dbRDA2*1.2,dbRDA2*1.2),
-                      label = label))+
-        theme_classic()+
-        xlab(paste0("dbRDA1 (",eig1,"%)"))+
-        ylab(paste0("dbRDA2 (",eig2,"%)"))+
-        guides(fill="none")  +
-        geom_hline(yintercept=0,linetype = "dashed")+
-        geom_vline(xintercept=0,linetype = "dashed")+
-        ggtitle(formula_tmp)+
-        theme(plot.title = element_text(face="bold"))+
-        coord_fixed()
+    dbrda_site_biplot[[i]][[j]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
+      geom_point(data = subset(fort_rda_tmp, score == "sites"), 
+                 aes(color = BIOME_NAME), 
+                 size = 3) +
+      scale_color_manual(values = biomes_color)+
+      geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
+                   aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+                   lineend = "round", 
+                   linejoin = "round",
+                   linewidth = .75, 
+                   arrow = arrow(length = unit(0.2, "inches")),
+                   colour = "black" ) +
+      coord_fixed()+ # fix proportion between axis units
+      geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
+                aes(x = dbRDA1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                    y = dbRDA2*1.2,
+                    label = midname))+
+      theme_classic()+
+      xlab(paste0("dbRDA1 (",eig1,"%)"))+
+      ylab(paste0("dbRDA2 (",eig2,"%)"))+
+      guides(fill="none")  +
+      geom_hline(yintercept=0,linetype = "dashed")+
+      geom_vline(xintercept=0,linetype = "dashed")+
+      ggtitle(formula_tmp)+
+      theme(plot.title = element_text(face="bold"))+
+      coord_fixed()+
+      ggtitle(paste0(p_title," | contsrained: ", round(dbrda_tmp$CCA$tot.chi/dbrda_tmp$tot.chi,digits = 2)))
+    
+        ggsave(paste0("Figures/dbrda",i,"_",j,".png"),dbrda_site_biplot[[i]][[j]],width = 8,height = 8)
+
+  }
 }
 ```
 
-
 ```{r}
-dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+ ph + height + water + gHM + soc +aet_lt+moist_lt+pr_lt+swe_lt+tmmn_lt+tmmx_lt+vap_lt+vpd_lt+evi_lt+fpar_lt+gpp_lt`+
-    dbrda_site_biplot$`labdsv::hellinger(t(meco_16s_ns$otu_table))~Condition(nb_reads)+ ph + height + water + gHM + soc +aet_st+moist_st+pr_st+swe_st+tmmn_st+tmmx_st+vap_st+vpd_st+evi_st+fpar_st+gpp_st`+
-    plot_layout(guides="collect")
+formulaZ <- c(XFormula_lt,XFormula_st)
+dbrda_site_biplot <- NULL
+for(i in c("_lt","_st")){
+  
+  var_tmp <- colnames(combined)[which(grepl(i,colnames(combined)))]
+  var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+  var_tmp <- var_tmp[which(gsub(i,"",var_tmp)%in%var_interest)]
+  
+  for(j in c("filt","nonfilt")){
+    
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
+    }
+    p_title <- paste0("dbRDA ",ifelse(i=="_lt","long term ","short term "), ifelse(j=="filt", "filtered","non filtered"))
+    
+    formula_tmp <- paste0("labdsv::hellinger(t(com_tmp$otu_table))~Condition(nb_reads)+ph+",paste0(var_tmp, collapse = "+"))
+    dbrda_tmp <- dbrda(formula=formula(formula_tmp),data=combined, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+    
+    #get eigen values of axes
+    eig <- c(dbrda_tmp$CCA$eig)
+    eig1 <- round((eig[1]/sum(eig))*100,digits = 2) # % of explained inertia of the first axis
+    eig2 <- round((eig[2]/sum(eig))*100,digits = 2) # % of explained inertia of the second axis
+    
+    fort_rda_tmp <- fortify(dbrda_tmp) # transform dbrda results in a ggplot2 usable format
+    vars <- c("dbRDA1","dbRDA2") # we will plot in the first two dimensions
+    want <- fort_rda_tmp[["score"]] == "biplot" # get variables scores (arrows)
+    mul <- arrowMul(fort_rda_tmp[want, vars, drop = FALSE],
+                    fort_rda_tmp[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
+    fort_rda_tmp[want, vars] <- mul * fort_rda_tmp[want, vars] # scale the scores 
+    
+    fort_rda_tmp%<>%
+      mutate(label=gsub(i,"",label))%>%
+      mutate(label=gsub("[A-Z]|-|(?=_).*","",label,perl=T))%>%
+      left_join(rename(names_df_clean,label=Var2))%>%
+      left_join(rename(combined,label=Sample))
+    
+    dbrda_site_biplot[[i]][[j]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
+      geom_point(data = subset(fort_rda_tmp, score == "sites"), 
+                 aes(color = ECO_NAME), 
+                 size = 3) +
+      scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+      geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
+                   aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+                   lineend = "round", 
+                   linejoin = "round",
+                   linewidth = .75, 
+                   arrow = arrow(length = unit(0.2, "inches")),
+                   colour = "black" ) +
+      coord_fixed()+ # fix proportion between axis units
+      geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
+                aes(x = dbRDA1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                    y = dbRDA2*1.2,
+                    label = midname))+
+      theme_classic()+
+      xlab(paste0("dbRDA1 (",eig1,"%)"))+
+      ylab(paste0("dbRDA2 (",eig2,"%)"))+
+      guides(fill="none")  +
+      geom_hline(yintercept=0,linetype = "dashed")+
+      geom_vline(xintercept=0,linetype = "dashed")+
+      ggtitle(formula_tmp)+
+      theme(plot.title = element_text(face="bold"))+
+      coord_fixed()+
+      ggtitle(paste0(p_title," | contsrained: ", round(dbrda_tmp$CCA$tot.chi/dbrda_tmp$tot.chi,digits = 2)))
+    
+        ggsave(paste0("Figures/dbrda_eco",i,"_",j,".png"),dbrda_site_biplot[[i]][[j]],width = 13,height = 10)
+
+  }
+}
 ```
-
-
-
 
 
 ## test new db
@@ -3537,167 +3982,7 @@ mantel(xdis = d_metacyc,
 ```
 
 
-## Spls Mixomics
 
-```{r}
-data_tmp <- meco_16s_relabfiltered
-data_tmp <- clone(data_tmp)
-mixomics_com <- t(data_tmp$otu_table)
-library(mixOmics)
-mixomics_plotlists <- NULL
-for(i in c("lt","st")){
-  
-  mixomics_com <- mixomics_com[,which(colSums(mixomics_com!=0)!=1)] # remove samplewise singletons
-  
-  group_plot <- site_bp[,which(colnames(site_bp)==paste0("bp_",i))]
-  
-  
-  mydata <- list(df1 = combined[c("ph",var_lt,"nb_reads")],
-                 df2 = mixomics_com) #Here you build your two datasets that should be integrated
-  
-  X <- mydata$df1 # use the gene expression data as the X matrix
-  Y <- mydata$df2 # use the clinical data as the Y matrix
-  
-  dim(X) # check the dimensions of the X dataframe
-  dim(Y)
-  
-
-  spls.holo <- spls(X = X, Y = Y, ncomp = 5, mode = 'regression')
-  # repeated CV tuning of component count
-  perf.spls.holo <- perf(spls.holo, validation = 'Mfold',
-                         folds = 5, nrepeat = 100) 
-  
-  perfplot <- plot(perf.spls.holo, criterion = 'Q2.total')
-  
-  
-  
-  # set range of test values for number of variables to use from X dataframe
-  list.keepX <- c(1:11)
-  # set range of test values for number of variables to use from Y dataframe
-  list.keepY <- c(20,30,40,seq(60,200,20),seq(350,ncol(Y),50)) 
-  
-  
-  tune.spls.holo <- tune.spls(X, Y, ncomp = 3,
-                              test.keepX = list.keepX,
-                              test.keepY = list.keepY,
-                              nrepeat = 100, folds = 5, # use 10 folds
-                              mode = 'regression', measure = 'cor') 
-  tuneplot <- plot(tune.spls.holo)         # use the correlation measure for tuning
-  
-  # extract optimal number of variables for X dataframe
-  optimal.keepX <- tune.spls.holo$choice.keepX 
-  
-  # extract optimal number of variables for Y datafram
-  optimal.keepY <- tune.spls.holo$choice.keepY
-  
-  optimal.ncomp <-  length(optimal.keepX) # extract optimal number of components
-  
-  # use all tuned values from above
-  final.spls.holo <- spls(X, Y, ncomp = optimal.ncomp, 
-                          keepX = optimal.keepX,
-                          keepY = optimal.keepY,
-                          mode = "regression") # explanitory approach being used, 
-  # hence use regression mode
-  
-  
-  # form new perf() object which utilises the final model
-  perf.spls.holo <- perf(final.spls.holo, 
-                         folds = 5, nrepeat = 100, # use repeated cross-validation
-                         validation = "Mfold", 
-                         dist = "max.dist",  # use max.dist measure
-                         progressBar = FALSE)
-  
-  kept_motus <- final.spls.holo$loadings$Y%>%as.data.frame()%>%filter(comp1!=0|comp2!=0)%>%rownames(.)
-  
-  mixomics_plotlists[[i]][["init"]] <- spls.holo
-
-  mixomics_plotlists[[i]][["perf"]] <- perf.spls.holo
-  mixomics_plotlists[[i]][["tuned"]] <- tune.spls.holo
-  
-  mixomics_plotlists[[i]][["final"]] <- final.spls.holo
-  
-<<<<<<< HEAD
-  }
-=======
-  stabY_plot <- ggplot(stabY,aes(x=reorder(features,-value),y=value))+
-    geom_bar(stat="identity")+
-    facet_wrap(.~variable)+
-    theme_classic2()+
-    theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
-    scale_y_continuous(expand=c(0,0))+
-    ggtitle("Y features")
-  
-  plot_stabz <- stabX_plot/stabY_plot
-     
-  corcirvar <- plotVar(final.spls.holo, cex = c(3,4), var.names = c(FALSE, TRUE))
-  corcirvar%<>%
-    mutate(names=rownames(.))
-  corcirplot <- 
-    ggplot(corcirvar,mapping=aes(x=x,y=y,color=Block,label=names))+
-    geom_point()+
-    ggrepel::geom_text_repel(max.overlaps = 15)+
-    xlim(c(-1,1))+
-    ylim(c(-1,1))+
-    geom_vline(xintercept = 0,linetype="dashed")+
-    geom_hline(yintercept = 0,linetype="dashed")+
-    theme_classic2()+
-    ggforce::geom_circle(aes(x0=0,y0=0,r=.5),color="black")+
-    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
-    scale_color_manual(values = c("aquamarine3","darkorange2"))
-  
-  
-  finmiomix <- plot_stabz+corcirplot
-  
-  heatmap_data_mixom <- cim(final.spls.holo, comp = 1:2, xlab = "clinic", ylab = "genes")
-  
-  
-  p1tmp <- (ggdendro::ggdendrogram(heatmapmixom$ddc)+
-              theme(axis.text.x = element_blank(),
-                    axis.text.y = element_blank()))/
-    ( heatmapmixom$mat%>%
-        as.data.frame()%>%
-        mutate(plant_traits=rownames(.))%>%
-        mutate(plant_traits=fct_relevel(plant_traits,c(heatmapmixom$row.names)))%>%
-        reshape2::melt()%>%
-        mutate(variable=fct_relevel(variable,c(heatmapmixom$col.names)))%>%
-        ggplot(aes(y=plant_traits,x=variable,fill=value))+
-        geom_tile()+
-        theme(axis.text.x = element_text(angle = 90),
-              panel.background = element_blank(),
-              legend.position = "right"))+
-    plot_layout(heights = c(2,6))
-  
-  p2tmp <- (plot_spacer())/(ggdendro::ggdendrogram(heatmapmixom$ddr)+
-                              theme(axis.text.y=element_blank(),axis.text.x=element_blank())+
-                              coord_flip())+
-    plot_layout(heights = c(2.5,6))
-  
-  
-  hmap_mixom <- (p1tmp|p2tmp)+plot_layout(widths = c(6,2),guides="collect")
-  
-  mixomics_plotlists[[i]][["compX"]] <- compX
-  mixomics_plotlists[[i]][["compY"]] <- compY
-  mixomics_plotlists[[i]][["indX"]] <- indX
-  mixomics_plotlists[[i]][["indY"]] <- indY
-  mixomics_plotlists[[i]][["perfplot"]] <- perfplot
-  mixomics_plotlists[[i]][["tuneplot"]] <- tuneplot
-  mixomics_plotlists[[i]][["optX"]] <- optimal.keepX
-  mixomics_plotlists[[i]][["optY"]] <- optimal.keepY
-  mixomics_plotlists[[i]][["findX"]] <- findX
-  mixomics_plotlists[[i]][["findY"]] <- findY
-  mixomics_plotlists[[i]][["findXY"]] <- findXY
-  mixomics_plotlists[[i]][["farrow"]] <- farrow
-  mixomics_plotlists[[i]][["finmiomix"]] <- finmiomix
-  mixomics_plotlists[[i]][["hmap_mixom"]] <- hmap_mixom
-}
->>>>>>> 05b2926576e87756932052c037b9cf23240849c3
-```
-
-
-```{r}
-mixomics_plotlists[[i]][["final"]]
-plotVar(mixomics_plotlists[[i]][["final"]],cutoff = .3)
-```
 
 
 ## Network
@@ -3719,15 +4004,257 @@ whittaker_base_plot()
 
 install.packages("WGCNA", repos = BiocManager::repositories())
 
-net1 <- trans_network$new(dataset = meco_16s_relabfiltered, cor_method = "pearson",use_WGCNA_pearson_spearman=T)
+rm(net1,d1)
+d1 <-clone(meco_16s_relabfiltered)
+d1 <- d1
+net1 <- trans_network$new(dataset = d1, cor_method = "pearson",use_WGCNA_pearson_spearman=T)
 
-net1$cal_network(network_method = "SpiecEasi", SpiecEasi_method = "mb")
+net1$cal_network(COR_p_thres = 0.01, COR_optimization = TRUE)
 
 net1$cal_module(method = "cluster_fast_greedy")
+
+net1$res_network
+
 net1$save_network(filepath = "network.gexf")
 
 net1$get_node_table(node_roles = TRUE)
+
+net1$cal_network_attr()
 ```
+
+
+```{r}
+rm(net2,d2)
+d2 <- clone(meco_16s_relabfiltered)
+d2 <- d2
+net2 <- trans_network$new(dataset = d2)
+
+net2$cal_network(network_method = "SpiecEasi", SpiecEasi_method = "mb")
+
+net2$cal_module(method = "cluster_leading_eigen")
+
+net2$save_network(filepath = "networkspieceasi.gexf")
+
+net2$get_node_table(node_roles = TRUE)
+
+net2$cal_network_attr()
+net2$res_network_attr
+net2$res_node_table 
+
+
+
+rm(net3,d3)
+d3 <- clone(meco_16s_relabfiltered)
+d3 <- d3
+net3 <- trans_network$new(dataset = d3)
+
+net3$cal_network(network_method = "SpiecEasi", SpiecEasi_method = "glasso")
+
+net3$cal_module(method = "cluster_leading_eigen")
+
+net3$save_network(filepath = "networkspieceasiglasso.gexf")
+
+net3$get_node_table(node_roles = TRUE)
+```
+
+```{r}
+module_col <- c("#FF326D","#00B7DA","#14B200","#7083ED","#FF6000","#A18B00","#00A66F","#007D90","#F657E4","#AA5C2D","#A25886","#4B7D34","#00A3F9","#404040ff")
+nb_module <- 13
+
+mod_ab_plot_list <- NULL
+hmap_network_list <- NULL
+plots_comp_module <- NULL
+net_list <- list(net1=net1,net2=net2,net3=net3)
+for(i in names(net_list)){
+  net_tmp <- net_list[[i]]
+  net_tmp <- net_tmp # get network
+  tmp_data <- clone(meco_16s_relabfiltered)
+  tmp_data <- tmp_data # get communities
+  
+  tmp_data$tax_table$name <- rownames(tmp_data$tax_table)
+  tmp_data$tax_table %<>% left_join(net1$res_node_table) # merge network output and taxa information
+  
+  distfrom01 <- geodist::geodist(combined[1,c("X2","Y2")],combined[2:199,c("X2","Y2")],measure = 'geodesic') #compute geographic distance from the first sample to order samples
+  
+  
+  df_tmp_plot <- tmp_data$otu_table%>%
+    mutate(name=rownames(.))%>%
+    reshape2::melt()%>%
+    left_join(tmp_data$tax_table)%>%
+    filter(!is.na(module))%>% # remove ASVs without modules (i.e. not kept in the network)
+    filter(value!=0)%>% # remove rows with no abundances (ASVs is not found in that sample)
+    group_by(variable)%>%
+    mutate(relab=value/sum(value),
+           variable=gsub("[A-Z]|-|(?=_).*","",variable,perl=T))%>% # compute relative abundance
+    ungroup()%>%  
+    left_join(rename(cbind(distfrom01=c(0,distfrom01),combined[,!names(combined)==("variable")]),variable=Sample)) # add distance
+  
+  
+  # get most abundant (reads count) and biggest (number of asvs) modules
+  top13_mod_reads <- df_tmp_plot%>%
+    group_by(module)%>%
+    summarise(totreads=sum(value))%>%
+    arrange(desc(totreads))%>%
+    slice(1:13)%>%
+    dplyr::select(module)%>%
+    pull()%>%
+    as.character()
+  
+  top13_mod_size <- paste0("M",1:13)
+  
+  df_tmp_plot %<>%
+    left_join(rename(combined,variable=Sample))%>%
+    mutate(mod2keep_reads=ifelse(as.character(module)%in%top13_mod_reads,as.character(module),"MNA"),
+           mod2keep_size=ifelse(as.character(module)%in%top13_mod_size,as.character(module),"MNA"))%>%
+    mutate(mod2keep_reads=fct_relevel(mod2keep_reads, paste0("M",sort(unique(as.numeric(gsub("M","",as.character(mod2keep_reads)))),na.last = T))),
+           mod2keep_size=fct_relevel(mod2keep_size, paste0("M",sort(unique(as.numeric(gsub("M","",as.character(mod2keep_size)))),na.last = T))))%>%
+    mutate(mod2keep_reads=fct_recode(mod2keep_reads, "Others" = "MNA"),
+           mod2keep_size=fct_recode(mod2keep_size, "Others" = "MNA"))%>%
+    arrange(BIOME_NAME)%>%
+    mutate(variable=as.factor(variable))%>%
+    mutate(variable=fct_relevel(variable,as.character(unique(variable))))
+  
+  # Plot Module RELAB across samples
+  p_relab_module <- df_tmp_plot%>%
+    ggplot(aes(x=variable,y=relab,fill=mod2keep_reads))+
+    geom_bar(stat="identity",position = "stack",width=1)+
+    scale_fill_manual(values = module_col)+
+    theme_classic2()+
+    scale_y_continuous(expand = c(0,0))+
+    theme(axis.text.x = element_blank(),
+          axis.title.x = element_blank())+
+    df_tmp_plot%>%
+    ggplot(aes(x=variable,y=1,fill=BIOME_NAME))+
+    geom_tile()+
+    scale_fill_manual(values=biomes_color)+
+    theme_void()+
+    plot_layout(heights = c(9,1),guides = "collect")+ 
+    theme(axis.text.x = element_text(angle = 90, vjust=.5,hjust=1,size=3))
+  
+  
+  # Plot module total reads and size
+  module_ab <- data_tmp$otu_table%>%
+    mutate(name=rownames(.))%>%
+    left_join(net1$res_node_table[,c("name","module")])%>%
+    filter(!is.na(module))%>%
+    reshape2::melt()%>%
+    mutate(value=ifelse(value==0,NA,value))%>%
+    group_by(module)%>%
+    summarise(modab=sum(value,na.rm = T),
+              modasvs=length(unique(name)))
+  
+  reads_modules <- module_ab %>%
+    arrange(desc(modab))%>%
+    mutate(module=as.factor(module))%>%
+    ggplot(aes(x=reorder(module,-modab),y=modab))+
+    geom_bar(stat='identity',width=1,color="grey40")+
+    scale_y_continuous(expand=c(0,0))+
+    theme(axis.text.x = element_text(angle=45,vjust=1,hjust=1))+
+    xlab("")+
+    ylab("Cumulative number of reads")
+  
+  asvs_modules <- module_ab %>%
+    arrange(desc(modab))%>%
+    mutate(module=as.factor(module))%>%
+    ggplot(aes(x=reorder(module,-modab),y=modasvs))+
+    geom_bar(stat='identity',width=1,color="grey40")+
+    scale_y_continuous(expand=c(0,0))+
+    theme(axis.text.x = element_text(angle=45,vjust=1,hjust=1))+
+    xlab("")+
+    ylab("Number of ASVs within modules")
+  
+  prev_cluster <- df_tmp_plot%>%group_by(name)%>%summarise(prev=sum(value>0))%>%filter(prev<100)
+  
+  # Plot hmap modules
+  
+  for(j in c("reads","size")){
+    
+    if(j=="reads"){
+      col2use <- "mod2keep_reads"
+    }else{
+      col2use <- "mod2keep_size"
+    }
+    
+    pheatmap_net <- df_tmp_plot%>%
+      ggplot(aes(x=1,y=variable,fill=BIOME_NAME))+
+      geom_tile()+
+      scale_fill_manual(values = biomes_color)+
+      theme(axis.title = element_blank(),
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank())+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"))+
+      df_tmp_plot%>%
+      arrange(.data[[col2use]])%>%
+      mutate(name=fct_relevel(name,unique(name)))%>%
+      ggplot(aes(name,variable,fill=log(value)))+
+      geom_tile()+
+      scale_fill_viridis_b()+
+      theme_void()+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"),
+            panel.background = element_rect(fill="darkgrey"))+
+      plot_spacer()+
+      df_tmp_plot%>%
+      arrange(.data[[col2use]])%>%
+      mutate(name=fct_relevel(name,unique(name)))%>%
+      ggplot(aes(name,1,fill=.data[[col2use]]))+
+      geom_tile()+
+      theme(axis.text.x = element_text(angle=90,size=3,vjust=.5,hjust=.5),
+            axis.title.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            axis.title.x = element_blank())+
+      scale_fill_manual(values = module_col)+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"))+
+      plot_layout(guides="collect",widths = c(0.1,9),heights = c(9,.1),ncol = 2,nrow = 2)
+    ggsave(paste0("Figures/pheatmap_network_",i,"_",j,".png"),pheatmap_net,width = 20,height = 13)
+    
+    
+    pheatmap_net_lowprev <- df_tmp_plot%>%
+      filter(name%in%prev_cluster$name)%>%
+      ggplot(aes(x=1,y=distfrom01,fill=BIOME_NAME))+
+      geom_tile()+
+      scale_fill_manual(values = biomes_color)+
+      theme(axis.title = element_blank(),
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank())+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"))+
+      df_tmp_plot%>%
+      filter(name%in%prev_cluster$name)%>%
+      arrange(.data[[col2use]])%>%
+      mutate(name=fct_relevel(name,unique(name)))%>%
+      ggplot(aes(name,distfrom01,fill=log(value)))+
+      geom_tile()+
+      scale_fill_viridis_b()+
+      theme_void()+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"),
+            panel.background = element_rect(fill="darkgrey"))+
+      plot_spacer()+
+      df_tmp_plot%>%
+      arrange(.data[[col2use]])%>%
+      filter(name%in%prev_cluster$name)%>%
+      mutate(name=fct_relevel(name,unique(name)))%>%
+      ggplot(aes(name,1,fill=.data[[col2use]]))+
+      geom_tile()+
+      theme(axis.text.x = element_text(angle=90,size=3,vjust=.5,hjust=.5),
+            axis.title.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            axis.title.x = element_blank())+
+      scale_fill_manual(values = module_col)+
+      theme(plot.margin = unit(c(0,0,0,0), "cm"))+
+      plot_layout(guides="collect",widths = c(0.1,9),heights = c(9,.1),ncol = 2,nrow = 2)
+    ggsave(paste0("Figures/pheatmap_network_lowprev_",i,"_",j,".png"),pheatmap_net,width = 20,height = 13)
+    
+    
+  }
+  
+  ggsave(paste0("Figures/module_info_",i,".png"),reads_modules/asvs_modules,width = 9, height = 8)
+  ggsave(paste0("Figures/module_relab_",i,".png"),p_relab_module,width = 20, height = 10)
+  
+}
+```
+
+
 
 ## Boruta 
 
@@ -3746,73 +4273,89 @@ print(boruta_train_lt)
 ## Random Forest
 
 ```{r}
-clust2keep <- rowSums(meco_16s_relabfiltered$otu_table>0)%>%
-    as.data.frame()%>%
-    rename(prev=1)%>%
-    mutate(cluster_id=rownames(.),
-           respect_prev=ifelse(prev>3,"yup","nope"))%>%
-    filter(respect_prev=="yup")
-
-tmp <- meco_16s_relabfiltered$otu_table
-tmp <- tmp[rownames(tmp)%in%clust2keep$cluster_id,]
-tmp%<>%
-    t()%>%
-    as.data.frame()%>%
-    mutate(Sample= gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))
-
-eurg <- tmp%>%
-    dplyr::select(-Sample)
-richness <- rowSums(eurg>0)
-tmp$richness <- richness
-
-ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
-
-var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
-var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
-
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
-
-var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
-var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
-
-XFormula_lt <- paste("train$",var_lt,sep="", collapse = "+")
-XFormula_st <- paste("train$",var_st,sep="", collapse = "+")
-XFormula_st <- paste0("~train$ph+",XFormula_st)
-XFormula_lt <- paste0("~train$ph+",XFormula_lt)
-
 rf_rez <- NULL
 plot_var_xplain <- NULL
 store_var <- NULL
 var_unlist <- NULL
-for( i in c("_lt","_st")){
-    formu <- get(paste0("XFormula",i))
+for(i in c("_lt","_st")){
+  
+  var_tmp <- colnames(combined)[which(grepl(i,colnames(combined)))]
+  
+  var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+  
+  var_tmp <- var_tmp[which(gsub(i,"",var_tmp)%in%var_interest)]
+  
+  XFormula_tmp <- paste("train$",var_tmp,sep="", collapse = "+")
+  XFormula_tmp <- paste0("~train$ph+",XFormula_tmp)
+  
+  formu <- XFormula_tmp
+  var <- var_tmp
+  
+  for(j in c("filt","nonfilt")){
     
-    var <- get(paste0("var",i))
-    
-    for(j in 1:500){
-        
-        ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
-        
-        train <- combined[ind==1,c("Sample","ph",var)]
-        test <- combined[ind==2,c("Sample","ph",var)]
-        train%<>%
-            left_join(tmp)
-        
-        var_rf <- NULL  
-        formula_tmp <- paste0("richness",formu)
-        rf <- randomForest::randomForest(as.formula(formula_tmp), data=train, proximity=TRUE, type = "regression") 
-        rf_rez[[i]][[j]] <- rf
-        var_rf <- c(round(100 * rf$rsq[length(rf$rsq)], digits = 2),var_rf)
-        store_var[[i]][[j]] <- var_rf
+
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
     }
+    
+    clust2keep <- rowSums(com_tmp$otu_table>0)%>%
+      as.data.frame()%>%
+      rename(prev=1)%>%
+      mutate(cluster_id=rownames(.),
+             respect_prev=ifelse(prev>3,"yup","nope"))%>%
+      filter(respect_prev=="yup")
+    
+    tmp <- com_tmp$otu_table
+    # tmp <- tmp[rownames(tmp)%in%clust2keep$cluster_id,]
+    tmp%<>%
+      t()%>%
+      as.data.frame()%>%
+      mutate(Sample= gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))
+    
+    tmp$richness <- rowSums(dplyr::select(tmp,-Sample)>0)
+    
+    ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
+    
+    for(k in 1:500){
+      
+      ind <- sample(2, nrow(tmp), replace = TRUE, prob = c(0.7, 0.3))
+      
+      train <- combined[ind==1,c("Sample","ph",var)]
+      test <- combined[ind==2,c("Sample","ph",var)]
+      train%<>%
+        left_join(tmp)
+      
+      var_rf <- NULL  
+      formula_tmp <- paste0("richness",formu)
+      rf <- randomForest::randomForest(as.formula(formula_tmp), data=train, proximity=TRUE, type = "regression") 
+      rf_rez[[j]][[i]][[k]] <- rf
+      var_rf <- c(round(100 * rf$rsq[length(rf$rsq)], digits = 2),var_rf)
+      store_var[[j]][[i]][[k]] <- var_rf
+    }
+    
+  }
 }
+```
 
-tseteudessuh <- data.frame(type = c(rep("lt",500),rep("st",500)),
-                          var = c(c(unlist(store_var$`_lt`)),c(unlist(store_var$`_st`))))
+```{r}
+tseteudessuh <- data.frame(used_df = c(rep("filt",1000),rep("nonfilt",1000)),
+                           type = rep(c(rep("lt",500),rep("st",500)),2),
+                           var = c(c(unlist(store_var$filt$`_lt`)),c(unlist(store_var$filt$`_st`)),
+                                   c(unlist(store_var$nonfilt$`_lt`)),c(unlist(store_var$nonfilt$`_st`))))
 
-tseteudessuh%>%
-    ggplot(aes(x=type,y=var,fill=type))+
-    geom_violin()
+p_RF <- tseteudessuh%>%
+  ggplot(aes(x=type,y=var,fill=type))+
+  geom_violin()+
+  facet_wrap(~used_df)+
+  ylab("Explained variance (%)")+
+  theme_classic2()+
+  scale_fill_manual(values=c("darkcyan","burlywood"),labels=c("Long term","Short term"),name="Variable type")+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+ggsave("Figures/RF_var.png",p_RF)
 ```
 
 ## GDM
@@ -3862,17 +4405,9 @@ for(i in c("lt","st")){
 ```
 
 ```{r}
-<<<<<<< HEAD
-get_density <- function(x, y, ...) {
-  dens <- MASS::kde2d(x, y, ...)
-  ix <- findInterval(x, dens$x)
-  iy <- findInterval(y, dens$y)
-  ii <- cbind(ix, iy)
-  return(dens$z[ii])
-}
-
 gdm_plot_var <- NULL
 gdm_plot_pred <- NULL
+gdm_var_contrib <- NULL
 for(i in c("lt","st")){
   
   for(j in c("filt","nonfilt")){
@@ -3880,18 +4415,34 @@ for(i in c("lt","st")){
     # VAR
     gdm_spline_data <- gdm::isplineExtract(gdm_fitted[[i]][[j]])
     
-    gdm_plot_var[[i]][[j]] <- gdm_spline_data$x%>%
+    p_var <- gdm_spline_data$x%>%
       reshape2::melt()%>%
       rename(valuex=value)%>%
       left_join(reshape2::melt(gdm_spline_data$y[,which(colSums(gdm_spline_data$y)!=0)]))%>%
+      mutate(Var2=gsub("_[a-z]{2}","",Var2))%>%
       rename(valuey=value)%>%
-      filter(Var2%in%names(which(colSums(gdm_spline_data$y)!=0)))%>%
+      left_join(names_df_clean)%>%  
+      mutate(midname=fct_relevel(midname,unique(names_df_clean$midname)))%>%
+      filter(Var2%in%gsub("_[a-z]{2}","",names(which(colSums(gdm_spline_data$y)!=0))))
+    
+    gdm_plot_var[[i]][[j]] <- p_var %>%
       ggplot(aes(x=valuex, y=valuey))+
       geom_line()+
-      facet_wrap(~Var2, scales="free")+
+      facet_wrap(~midname, scales="free")+
       theme_bw()+
       theme(axis.title = element_blank())
     
+    gdm_var_contrib[[i]][[j]] <- p_var %>%
+      group_by(midname)%>%
+      summarise(maxy=max(valuey))%>%
+      ggplot(aes(x=reorder(midname,-maxy),y=maxy,fill=midname))+
+      geom_bar(stat = "identity")+
+      scale_fill_manual(values = brewer.pal(8,"Dark2"),name="Variables")+
+      xlab("")+
+      ylab("Max effect")+
+      theme_bw()+
+      theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))
+      
     # PRED
     
     gdm_pred_data <- predict(object=gdm_fitted[[i]][[j]],
@@ -3931,66 +4482,6 @@ for(i in c("lt","st")){
     
   }
 }
-=======
-names_df_clean <-data.frame(fullname= c("Geographic","pH","Evapo-transpiration","Precipitation","Snow water equivalent", "T° min","T° max","Vapor pressure deficit", "Enhanced vegetation index", "Fraction of absorbed photosynthetically active radiation","Growth primary production"),
-                            Var2= c("Geographic","ph","aet","pr","swe", "tmmn","tmmx","vpd", "evi", "fpar","gpp"),
-                            midname= c("Geographic","pH","AET","Precipitation","Snow water eq","T° min","T° max","VPD","eVI","FPAR","GPP"))
-```
-
-
-```{r}
-gdm_spline_lt <- gdm::isplineExtract(gdm_fitted$lt)
-
-
-var_effect_lt<- gdm_spline_lt$x%>%
-    reshape2::melt()%>%
-    rename(valuex=value)%>%
-    left_join(reshape2::melt(gdm_spline_lt$y))%>%
-    mutate(Var2=gsub("_lt","",Var2))%>%
-    rename(valuey=value)%>%
-    left_join(names_df_clean)%>%
-    mutate(midname=fct_relevel(midname,unique(names_df_clean$midname)))%>%
-    ggplot(aes(x=valuex, y=valuey))+
-    geom_line()+
-    facet_wrap(~midname, scales="free")+
-    theme_bw()+
-    ylab("Biological change")+
-    xlab("Variable gradient")
-
-gdm_pred_lt <- predict(object=gdm_fitted$lt,
-                       data=gdm_preddata)
-
-gdm_fitted$lt$predicted
-
-prd_df <- data.frame(predlt=gdm_fitted$lt$predicted,
-                     obslt=gdm_fitted$lt$observed,
-                     ecolt=gdm_fitted$lt$ecological)
-
-
-prd_df$density_ecoobs <- get_density(prd_df$obslt, prd_df$ecolt, n = 100)
-obsecol_plot <- ggplot(prd_df,
-                       aes(x=ecolt,
-                           y=obslt,
-                           color=density_ecoobs))+
-    geom_point()+
-    geom_smooth(se=F,method = "loess")+
-    ylim(c(0,1))+ 
-    viridis::scale_color_viridis()+
-    ylab("Observed biological distance")+
-    xlab("Ecological distance")
-
-
-prd_df$density_obspred <- get_density(prd_df$obslt, prd_df$predlt, n = 100)
-predsobs_plot <- ggplot(prd_df,
-                        aes(x=obslt,
-                            y=predlt,
-                            color=density_obspred))+
-    geom_point()+
-    geom_smooth(method="lm")+ 
-    viridis::scale_color_viridis()+
-    ylab("Predicted biological distance")+
-    xlab("Observed biological distance")
->>>>>>> 05b2926576e87756932052c037b9cf23240849c3
 ```
 
 ```{r}
@@ -3999,272 +4490,40 @@ for(i in c("lt","st")){
   for(j in c("filt","nonfilt")){
     ptmp <- (gdm_plot_pred[[i]][[j]])/(gdm_plot_var[[i]][[j]])
     ggsave(paste0("Figures/gdm_",j,"_",i,".png"),ptmp,width=12,height = 10)
+    ptmp2 <- (gdm_var_contrib[[i]][[j]])
+    ggsave(paste0("Figures/gdm_maxvar_",j,"_",i,".png"),ptmp2,width=4,height = 5)
+
   }
 }
 ```
-
-
-
-##glmmields
-
-```{r}
-# install.packages("glmmfields")
-# library(glmmfields)
-hist(combined$nb_asvs)
-m_spatial <- glmmfields::glmmfields(formula = nb_asvs ~ ph + height + water + gHM + soc +aet_st+moist_st+pr_st+swe_st+tmmn_st+tmmx_st+vap_st+vpd_st+evi_st+fpar_st+gpp_st+ log(nb_reads),
-                                    data = combined[,1:(ncol(combined)-2)],
-                                    family = gaussian(link = "identity"),
-                                    lat = "Y",
-                                    lon = "X", 
-                                    nknots = 20,
-                                    iter = 1000, 
-                                    chains = 4,
-                                    seed = 973, # passed to rstan::sampling()
-                                    # init = "0",
-                                    thin=5)
-# install.packages("bayesplot")
-library(bayesplot)
-
-tidy_m <- glmmfields::tidy(m_spatial)
-print(m_spatial)
-
-plot(m_spatial, type = "prediction") + scale_color_gradient2()
-plot(m_spatial, type = "spatial-residual")
-
-p <- predict(m_spatial)
-p
-
-
-
-df_glmm_tmp <- cbind(p, nb_asvs=combined$nb_asvs)
-
-df_glmm_tmp%>%
-  ggplot(aes(x=nb_asvs,y=estimate))+
-  geom_point()
-```
-
-## Moran's eigenvector with Adespatial
-
-```{r}
-mat_dist <- codep::geodesics(combined[,c("X","Y")])
-mat_geo <- geodist(combined[,c("X","Y")],measure = 'geodesic')
-# class(mat_geo) <- c("matrix","dist")
-mems <- dbmem(as.dist(mat_geo))
-mems2 <- dbmem(mat_dist)
-
-
-mems$Lat <- combined$Y
-mems$Lon <- combined$X
-mems$Lon[which(duplicated(mems$Lon))] <- jitter(mems$Lon[which(duplicated(mems$Lon))] ,amount = 8.983112*10^-6)
-
-
-mems2$Lat <- combined$Y
-mems2$Lon <- combined$X
-mems2$Lon[which(duplicated(mems2$Lon))] <- jitter(mems2$Lon[which(duplicated(mems2$Lon))] ,amount = 8.983112*10^-6)
-
-
-p <- FactoMineR::PCA(mems[,1:12],graph=F)%>%
-  factoextra::fviz_pca_biplot()/(
-    FactoMineR::PCA(mems[,1:12],graph=F)%>%
-      factoextra::fviz_contrib("var",axes = 1)+
-      FactoMineR::PCA(mems[,1:12],graph=F)%>%
-      factoextra::fviz_contrib("var",axes = 2))
-ggsave("Figures/MEMs_PCA.png",p)
-
-mem_long <- gather(mems, MEM, Value, MEM1:(ncol(mems)-2))
-mem_long_sf <- st_as_sf(mem_long, coords = c("Lon","Lat"),crs = 4326, agr = "constant")
-
-
-ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=filter(mem_long_sf,grepl("M10|M2",MEM)), aes(fill=Value),shape=23)+
-  facet_wrap(~MEM)+
-  ggtitle("MAPP 16s sites") +
-  theme(plot.title = element_text(hjust = 0.5))+
-  theme_minimal()+
-  theme(panel.background = element_rect(fill = "azure"))+
-  scale_fill_viridis_b()
-
-
-
-
-p <- FactoMineR::PCA(mems2[,1:12],graph=F)%>%
-  factoextra::fviz_pca_biplot()/(
-    FactoMineR::PCA(mems2[,1:12],graph=F)%>%
-      factoextra::fviz_contrib("var",axes = 1)+
-      FactoMineR::PCA(mems2[,1:12],graph=F)%>%
-      factoextra::fviz_contrib("var",axes = 2))
-ggsave("Figures/mems2_PCA.png",p)
-
-mem_long <- gather(mems2, MEM, Value, MEM1:(ncol(mems2)-2))
-mem_long_sf <- st_as_sf(mem_long, coords = c("Lon","Lat"),crs = 4326, agr = "constant")
-
-
-ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=filter(mem_long_sf,grepl("M8|M9",MEM)), aes(fill=Value),shape=23)+
-  facet_wrap(~MEM)+
-  ggtitle("MAPP 16s sites") +
-  theme(plot.title = element_text(hjust = 0.5))+
-  theme_minimal()+
-  theme(panel.background = element_rect(fill = "azure"))+
-  scale_fill_viridis_b()
-```
-
-
-```{r}
-mst <- spdep::mstree(attr(mems,"listw"))
-mst
-plot(mst,st_coordinates(mxy))
-
-
-new_nb <- mst.nb(codep::geodesics(combined[,c("X","Y")]))
-```
-
-
-```{r}
-nbtri <- tri2nb(st_coordinates(mxy))
-nbgab <- graph2nb(gabrielneigh(st_coordinates(mxy)), sym = TRUE)
-nbrel <- graph2nb(relativeneigh(st_coordinates(mxy)), sym = TRUE)
-
-ptmplist <- NULL
-for(i in c("nbtri","nbgab","nbrel")){
-  
-  tmp <- get(i)
-  
-  euch <- nb2lines(tmp,coords=st_coordinates(sites2),as_sf = T)
-  st_crs(euch) <- 4326
-  
-  # plot
-  ptmp<-ggplot() +
-    geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-    geom_sf(data=sites2, pch=19, color="blue") +
-    geom_sf(data=euch, color="blue", lwd=0.3, lty=2) +
-    labs(title=paste0("Adjacency Connection: ",i)) + 
-    xlab("") +
-    ylab("")
-  ptmplist[[i]] <- ptmp
-}
-
-listw2lines(attr(mems,"listw"),coords=st_coordinates(sites2),as_sf = T)
-
-ptmplist$nbtri/ptmplist$nbgab/ptmplist$nbrel
-```
-
-```{r}
-youchi <- listw2lines(attr(mems,"listw"),coords=st_coordinates(sites2),as_sf = T)
-st_crs(youchi) <- 4326
-
-youchado <- listw2lines(attr(mems2,"listw"),coords=st_coordinates(sites2),as_sf = T)
-st_crs(youchado) <- 4326
-
-
-youchar <- listw2lines(nb2listw(new_nb),coords=st_coordinates(sites2),as_sf = T)
-st_crs(youchar) <- 4326
-
-ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=sites2, pch=19, color="blue") +
-  geom_sf(data=youchar, color="blue", lwd=0.3, lty=2) +
-  labs(title=paste0("Adjacency Connection: ","mst")) + 
-  xlab("") +
-  ylab("")+
-  ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=sites2, pch=19, color="blue") +
-  geom_sf(data=youchi, color="blue", lwd=0.3, lty=2) +
-  labs(title=paste0("Adjacency Connection: ","mems")) + 
-  xlab("") +
-  ylab("")+
-  ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=sites2, pch=19, color="blue") +
-  geom_sf(data=youchado, color="blue", lwd=0.3, lty=2) +
-  labs(title=paste0("Adjacency Connection: ","mems2")) + 
-  xlab("") +
-  ylab("")
-```
-
-
-```{r}
-nbdists(new_nb,coords=sites2)%>%unlist%>%max;give.thresh(mat_dist);give.thresh(mat_geo)
-```
-
-```{r}
-st_distance(mem_long_sf,mem_long_sf,which="Great Circle")%>%max();max(mat_geo)
-```
-
-
-```{r}
-mems_shorter <- dbmem(mat_dist, thresh = 7549762)
-
-
-youchi_shorter <- listw2lines(attr(mems_shorter,"listw"),coords=st_coordinates(sites2),as_sf = T)
-st_crs(youchi_shorter) <- 4326
-
-ggplot() +
-  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
-  geom_sf(data=sites2, pch=19, color="blue") +
-  geom_sf(data=youchi_shorter, color="blue", lwd=0.3, lty=2) +
-  labs(title=paste0("Adjacency Connection: ","mems_shorter")) + 
-  xlab("") +
-  ylab("")
-
-```
-
-
-
-```{r}
-mxy <- as.matrix(combined[,c("X","Y")])
-mxy%>%
-  ggplot(aes(x=X,y=Y))+
-  geom_point(color="darkseagreen")+
-  theme_minimal()
-
-mxy <- st_as_sf(data.frame(mxy),coords=c("X","Y"),crs=4326, agr = "constant")
-st_geometry(mxy)
-mst <- spdep::mstree(attr(mems,"listw"))
-```
-
-```{r}
-list_scalo <- NULL
-for(i in c("st","lt")){
-    
-    var2use <- get(paste0("var_",i))
-    df_tmp <- combined %>% 
-        dplyr::select(all_of(c("ph",var2use)))
-  for(j in 1:ncol(df_tmp)){
-    
-    list_scalo[[i]][[j]] <- scalogram(df_tmp[,j], mems2)
-  }
-}
-plot(list_scalo$st[[1]])
-plot(list_scalo$st[[2]])
-
-```
-
-
 
 ## pca mems
 ```{r}
-PCA_withmems
+PCA_withmems <- NULL
+scree_plot_mems_list <- NULL
 for(i in c("st","lt")){
-    
-    var2use <- get(paste0("var_",i))
-    pca_tmp <- combined %>% 
-        dplyr::select(all_of(c("ph",var2use)))%>%
-        FactoMineR::PCA(scale.unit = T,
-                        graph = F)
-    
+  
+  mems_df <- mems[,test$names[which(test$adj.pvalue<0.05)]]
+  var2use <- get(paste0("var_",i))
+  var2use <- c(names(mems_df),"ph",var2use)
+  mems_df$Sample <- combined$Sample
+  
+  pca_tmp <- combined %>% 
+    left_join(mems_df)%>%
+    dplyr::select(all_of(var2use))%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F)
+  
     eig <- pca_tmp$eig
     coord_pca <- as.data.frame(pca_tmp$ind$coord)
     coord_pca$site <- combined$Sample
+    coord_pca$biome <- combined$BIOME_NAME
 
     mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
                     pca_tmp$ind$coord)
     
-    pca_site_var[[i]] <- ggplot()+
-        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2),color="darkorchid4")+
+    PCA_withmems[[i]] <- ggplot()+
+        geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=biome))+
         theme_classic2()+
         geom_vline(xintercept = 0,lty=2)+
         geom_hline(yintercept = 0,lty=2)+
@@ -4277,16 +4536,602 @@ for(i in c("st","lt")){
                      arrow = arrow(length = unit(0.2, "inches")),
                      colour = "black" 
         )+
-        ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
-                                 aes(x = ifelse(Dim.1<0,Dim.1*1.1,Dim.1*1.1), # nudge a bit the coordinates so that they're not on the arrows
-                                     y = ifelse(Dim.2<0,Dim.2*1.1,Dim.2*1.1),
+        geom_text(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
+                                 aes(x = Dim.1*1.1, # nudge a bit the coordinates so that they're not on the arrows
+                                     y = Dim.2*1.1,
                                      label = var),
                                  max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
         ggtitle(paste0("Biplot sites ",i))+
-        theme(plot.title = element_text(face="bold"))
+        theme(plot.title = element_text(face="bold"))+
+      scale_color_manual(values=biomes_color)
     
-    scree_plot_var_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "darkorchid4", barcolor="darkorchid4")
-    ggsave(paste0("Figures/pca_",i,".png"),pca_site_var[[i]]+scree_plot_var_list[[i]],width = 12)
+    scree_plot_mems_list[[i]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "darkorchid4", barcolor="darkorchid4")
+    ggsave(paste0("Figures/pca_mems_",i,".png"),PCA_withmems[[i]]+scree_plot_mems_list[[i]],width = 12)
 }
+```
+
+## dbRDA mems
+
+```{r}
+dbrda_site_biplot_mems <- NULL
+for(i in c("_lt","_st")){
+  
+  var_tmp <- colnames(combined)[which(grepl(i,colnames(combined)))]
+  var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+  var_tmp <- var_tmp[which(gsub(i,"",var_tmp)%in%var_interest)]
+  
+  mems_df <- mems[,test$names[which(test$adj.pvalue<0.05)]]
+  var_tmp <- c(names(mems_df),"ph",var_tmp)
+  mems_df$Sample <- combined$Sample
+  
+  combined_tmp <- combined %>% 
+    left_join(mems_df)
+  
+  for(j in c("filt","nonfilt")){
+    
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
+    }
+    p_title <- paste0("dbRDA ",ifelse(i=="_lt","long term ","short term "), ifelse(j=="filt", "filtered","non filtered"))
+    
+    formula_tmp <- paste0("labdsv::hellinger(t(com_tmp$otu_table))~Condition(nb_reads)+",paste0(var_tmp, collapse = "+"))
+    dbrda_tmp <- dbrda(formula=formula(formula_tmp),data=combined_tmp, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+    
+    #get eigen values of axes
+    eig <- c(dbrda_tmp$CCA$eig)
+    eig1 <- round((eig[1]/sum(eig))*100,digits = 2) # % of explained inertia of the first axis
+    eig2 <- round((eig[2]/sum(eig))*100,digits = 2) # % of explained inertia of the second axis
+    
+    fort_rda_tmp <- fortify(dbrda_tmp) # transform dbrda results in a ggplot2 usable format
+    vars <- c("dbRDA1","dbRDA2") # we will plot in the first two dimensions
+    want <- fort_rda_tmp[["score"]] == "biplot" # get variables scores (arrows)
+    mul <- arrowMul(fort_rda_tmp[want, vars, drop = FALSE],
+                    fort_rda_tmp[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
+    fort_rda_tmp[want, vars] <- mul * fort_rda_tmp[want, vars] # scale the scores 
+    
+    fort_rda_tmp%<>%
+      mutate(label=gsub(i,"",label))%>%
+      left_join(rename(names_df_clean,label=Var2))%>%
+      mutate(midname=ifelse(is.na(midname),label,midname))
+    
+    dbrda_site_biplot_mems[[i]][[j]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
+      geom_point(data = cbind(subset(fort_rda_tmp, score == "sites"), # add points (sites) corresponding to samples
+                              country=combined$Country), 
+                 aes(color = country), 
+                 size = 3) +
+      scale_color_manual(values = country_color)+
+      geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
+                   aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+                   lineend = "round", 
+                   linejoin = "round",
+                   linewidth = .75, 
+                   arrow = arrow(length = unit(0.2, "inches")),
+                   colour = "black" ) +
+      coord_fixed()+ # fix proportion between axis units
+      geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
+                aes(x = dbRDA1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                    y = dbRDA2*1.2,
+                    label = midname))+
+      theme_classic()+
+      xlab(paste0("dbRDA1 (",eig1,"%)"))+
+      ylab(paste0("dbRDA2 (",eig2,"%)"))+
+      guides(fill="none")  +
+      geom_hline(yintercept=0,linetype = "dashed")+
+      geom_vline(xintercept=0,linetype = "dashed")+
+      ggtitle(formula_tmp)+
+      theme(plot.title = element_text(face="bold"))+
+      coord_fixed()+
+      ggtitle(paste0(p_title," | contsrained: ", round(dbrda_tmp$CCA$tot.chi/dbrda_tmp$tot.chi,digits = 2)))
+    
+        ggsave(paste0("Figures/dbrda_mems_",i,"_",j,".png"),dbrda_site_biplot_mems[[i]][[j]],width = 8,height = 8)
+
+  }
+}
+```
+
+Enhance the proportion of constrained Variance of the model to add MEMs 
+
+## Dist matrices
+
+```{r}
+mat_geo <- mat_geo
+mat_bio <- vegdist(labdsv::hellinger(t(meco_16s_ns$otu_table)),"horn")
+mat_eco <- vegdist(scale(combined[,c("ph",var_lt)]),"euclidean")
+mat_ecost <- vegdist(scale(combined[,c("ph",var_st)]),"euclidean")
+
+mt1 <- mantel(mat_geo,mat_bio)
+mt2 <- mantel(mat_eco,mat_bio)
+mt3 <- mantel(mat_ecost,mat_bio)
+
+mantel_geo <- gghistogram(mt1$perm,fill = "darkgrey",color=NA)
+df<- data.frame(x1=mt1$statistic,x2=mt1$statistic,y1=0,y2=layer_scales(mantel_geo)$y$range$range[2]*.25)
+
+mantel_geo <- mantel_geo+
+  geom_segment(df,mapping=aes(x = x1,xend = x2,y=y1,yend=y2))+
+  geom_point(df,mapping=aes(x = x1,y=y2),shape=23,fill="darkorange2",size=4)+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("Mantel simulation value (out of 999)")+
+  geom_label(df,mapping=aes(x = x1,y=y2*1.5,label="Observed statistic"),color="darkorange2",size=4)+
+  scale_x_continuous(expand = expansion(add=c(0,.15*mt1$statistic)))+
+  ggtitle(paste0("Mantel test geo-bio | pval: ",mt1$signif))
+
+mantel_eco <- gghistogram(mt2$perm,fill = "darkgrey",color=NA)
+df2 <- data.frame(x1=mt2$statistic,x2=mt2$statistic,y1=0,y2=layer_scales(mantel_eco)$y$range$range[2]*.25)
+
+mantel_eco <- mantel_eco+
+  geom_segment(df2,mapping=aes(x = x1,xend = x2,y=y1,yend=y2))+
+  geom_point(df2,mapping=aes(x = x1,y=y2),shape=23,fill="darkorange2",size=4)+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("Mantel simulation value (out of 999)")+
+  geom_label(df2,mapping=aes(x = x1,y=y2*1.5,label="Observed statistic"),color="darkorange2",size=4)+
+  scale_x_continuous(expand = expansion(add=c(0,.15*mt2$statistic)))+  
+  ggtitle(paste0("Mantel test eco-bio | pval: ",mt2$signif))
+
+
+mantel_ecost <- gghistogram(mt3$perm,fill = "darkgrey",color=NA)
+df3 <- data.frame(x1=mt3$statistic,x2=mt3$statistic,y1=0,y2=layer_scales(mantel_ecost)$y$range$range[2]*.25)
+
+mantel_ecost <- mantel_ecost+
+  geom_segment(df3,mapping=aes(x = x1,xend = x2,y=y1,yend=y2))+
+  geom_point(df3,mapping=aes(x = x1,y=y2),shape=23,fill="darkorange2",size=4)+
+  scale_y_continuous(expand = c(0,0))+
+  xlab("Mantel simulation value (out of 999)")+
+  geom_label(df3,mapping=aes(x = x1,y=y2*1.5,label="Observed statistic"),color="darkorange2",size=4)+
+  scale_x_continuous(expand = expansion(add=c(0,.15*mt3$statistic)))+
+  ggtitle(paste0("Mantel test ecost-bio | pval: ",mt3$signif))
+
+
+
+ggsave("Figures/mantel.png",mantel_eco+mantel_geo+mantel_ecost+plot_spacer(),width=15,height =8)
+```
+
+Geography over env
+
+## var part
+
+```{r}
+vlt <- varpart(labdsv::hellinger(t(meco_16s_ns$otu_table)),mems,combined[,c("ph",var_lt)])
+plot(vlt)
+
+vlt2 <- varpart(combined$nb_asvs,mems,combined[,c("ph",var_lt)])
+plot(vlt2)
+
+vlt3 <- varpart(mat_bio,mems,combined[,c("ph",var_lt)])
+plot(vlt3)
+
+pcnmtest <- pcnm(mat_geo)
+vlt4 <- varpart(mat_bio,pcnmtest$vectors,combined[,c("ph",var_lt)])
+plot(vlt4)
+```
+
+PCNM better than MEMs?
+
+
+```{r}
+vegan::cca(labdsv::hellinger(t(meco_16s_ns$otu_table)),mems,combined[,c("ph",var_lt)]);vegan::cca(labdsv::hellinger(t(meco_16s_ns$otu_table)),pcnmtest$vectors,combined[,c("ph",var_lt)])
+```
+
+
+## Spls Mixomics
+
+```{r}
+data_tmp <- meco_16s_relabfiltered
+data_tmp <- clone(data_tmp)
+mixomics_com <- t(data_tmp$otu_table)
+library(mixOmics)
+mixomics_plotlists <- NULL
+for(i in c("lt","st")){
+  
+  mixomics_com <- mixomics_com[,which(colSums(mixomics_com!=0)!=1)] # remove samplewise singletons
+  var <- get(paste0("var_",i))
+  mydata <- list(df1 = cbind(combined[c("ph",var,"nb_reads")],pcnmtest$vectors),
+                 df2 = mixomics_com) #Here you build your two datasets that should be integrated
+  
+  X <- mydata$df1 # use the gene expression data as the X matrix
+  Y <- mydata$df2 # use the clinical data as the Y matrix
+  
+  dim(X) # check the dimensions of the X dataframe
+  dim(Y)
+  
+
+  spls.holo <- spls(X = X, Y = Y, ncomp = 5, mode = 'regression')
+  # repeated CV tuning of component count
+  perf.spls.holo <- perf(spls.holo, validation = 'Mfold',
+                         folds = 5, nrepeat = 100) 
+  
+  # set range of test values for number of variables to use from X dataframe
+  list.keepX <- c(1:11)
+  # set range of test values for number of variables to use from Y dataframe
+  list.keepY <- c(20,30,40,seq(60,200,20),seq(350,ncol(Y),50)) 
+  
+  
+  tune.spls.holo <- tune.spls(X, Y, ncomp = 3,
+                              test.keepX = list.keepX,
+                              test.keepY = list.keepY,
+                              nrepeat = 100, folds = 5, # use 10 folds
+                              mode = 'regression', measure = 'cor') 
+ 
+  # extract optimal number of variables for X dataframe
+  optimal.keepX <- tune.spls.holo$choice.keepX 
+  
+  # extract optimal number of variables for Y datafram
+  optimal.keepY <- tune.spls.holo$choice.keepY
+  
+  optimal.ncomp <-  length(optimal.keepX) # extract optimal number of components
+  
+  # use all tuned values from above
+  final.spls.holo <- spls(X, Y, ncomp = optimal.ncomp, 
+                          keepX = optimal.keepX,
+                          keepY = optimal.keepY,
+                          mode = "regression") # explanitory approach being used, 
+  # hence use regression mode
+  
+  
+  # form new perf() object which utilises the final model
+  perf.spls.holo <- perf(final.spls.holo, 
+                         folds = 5, nrepeat = 100, # use repeated cross-validation
+                         validation = "Mfold", 
+                         dist = "max.dist",  # use max.dist measure
+                         progressBar = FALSE)
+  
+  kept_motus <- final.spls.holo$loadings$Y%>%as.data.frame()%>%filter(comp1!=0|comp2!=0)%>%rownames(.)
+  
+  mixomics_plotlists[[i]][["init"]] <- spls.holo
+
+  mixomics_plotlists[[i]][["perf"]] <- perf.spls.holo
+  mixomics_plotlists[[i]][["tuned"]] <- tune.spls.holo
+  
+  mixomics_plotlists[[i]][["final"]] <- final.spls.holo
+  
+}
+```
+
+Plotting results
+```{r}
+perfplot <- (plot(mixomics_plotlists$lt$perf, criterion = 'Q2.total')+
+  ggtitle("Perf plot long term"))/
+  plot(mixomics_plotlists$st$perf, criterion = 'Q2.total')+
+  ggtitle("Perf plot short term")
+
+tuneplot <- (plot(mixomics_plotlists$lt$tuned, size.range = c(1,3))+
+  ggtitle("Tuning plot long term"))/
+  plot(mixomics_plotlists$st$tuned, size.range = c(1,3))+
+  ggtitle("Tuning plot short term")+
+  plot_layout(guides = "collect")
+
+plot_stabz <- NULL
+for(i in c("st","lt")){
+stabX <- as.data.frame(mixomics_plotlists[[i]]$perf$features$stability.X)%>%
+    mutate(features=rownames(.))%>%
+    reshape2::melt()
+stabY <- as.data.frame(mixomics_plotlists[[i]]$perf$features$stability.Y)%>%
+    mutate(features=rownames(.))%>%
+    reshape2::melt()
+
+stabX_plot <- stabX%>%
+  filter(value>0.65)%>%
+  ggplot(aes(x=tidytext::reorder_within(features,-value,variable),y=value))+
+  geom_bar(stat="identity",width = 1,color="white")+
+  facet_wrap(.~variable,scales='free_x')+
+  theme_classic2()+
+  theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
+  scale_y_continuous(expand=c(0,0))+
+  ggtitle(paste0("Env variable",ifelse(i=="st"," Short term"," Long term")))+
+  tidytext::scale_x_reordered() +
+  xlab("")
+stabY_plot <- stabY%>%
+  filter(value>0.65)%>%
+  ggplot(aes(x=tidytext::reorder_within(features,-value,variable),y=value))+
+  geom_bar(stat="identity",width = 1,color="white")+
+  facet_wrap(.~variable,scales='free_x')+
+  theme_classic2()+
+  theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))+
+  scale_y_continuous(expand=c(0,0))+
+  ggtitle("ASVs")+
+  tidytext::scale_x_reordered()  +
+  xlab("")
+
+plot_stabz[[i]] <- stabX_plot/stabY_plot
+}
+plot_stabz[["lt"]]|plot_stabz[["st"]]
+
+cutoff2use <- .4
+plot_corcir <- NULL
+store_corcir <- NULL
+for(i in c("st","lt")){
+  
+  corcirvar <- plotVar(mixomics_plotlists[[i]]$final, cex = c(3,4), var.names = c(FALSE, TRUE))
+  
+  corcirvar%<>%
+    mutate(Var2=gsub(paste0("_",i),"",rownames(.)))%>%
+    left_join(names_df_clean)%>%
+    mutate(fullname=ifelse(is.na(fullname),Var2,as.character(fullname)))%>%
+    mutate(wellrep = ifelse(abs(x)>cutoff2use|abs(y)>cutoff2use,"yes","no"))%>%
+    mutate(var_cat = ifelse(grepl("Cluster",fullname),"ASVs",'Environment'))
+  store_corcir[[i]] <- corcirvar
+  plot_corcir[[i]] <- ggplot(corcirvar, aes(x = x, y = y)) +
+    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
+    geom_point(data = filter(corcirvar,var_cat!="ASVs"),aes(color = var_cat),size=4,shape=17)+
+    ggrepel::geom_text_repel(data =filter(corcirvar,var_cat!="ASVs"),aes(label=fullname,color = var_cat))+
+    scale_color_manual(values =c(Environment= "darkcyan",
+                                 ASVs="chocolate3"),                       
+                       name="")+ 
+    guides(color = guide_legend(override.aes = aes(label = "")))+
+    ggnewscale::new_scale_color()+
+    geom_point(data = filter(corcirvar,var_cat=="ASVs"), # add arrows for variables
+               aes(color=var_cat,alpha=wellrep),size=3,shape=16) +
+    scale_color_manual(values = "chocolate3",name="",label="ASVs")+
+    scale_alpha_manual(values = c(.3,1),label = paste0(c("|cor|>","|cor|<"),cutoff2use), name = "ASVs correlation")+
+    xlim(c(-1,1))+
+    ylim(c(-1,1))+
+    geom_vline(xintercept = 0,linetype="dashed")+
+    geom_hline(yintercept = 0,linetype="dashed")+
+    theme_classic2()+
+    ylab("Component 2")+
+    xlab("Component 1")+
+    coord_fixed()+
+    ggtitle(ifelse(i=="lt","Long term","Short term"))
+}
+plot_corcir$lt|plot_corcir$st+plot_layout(guides = "collect")
+
+
+plot_hmap <- NULL
+for(i in c("st","lt")){
+  heatmap_data_mixom <- cim(mixomics_plotlists[[i]]$final, comp = 1:2, xlab = "clinic", ylab = "genes")
+  corcirvar <- store_corcir[[i]]
+  data <- heatmap_data_mixom$mat[gsub(paste0("_",i),"",heatmap_data_mixom$row.names)%in%corcirvar[corcirvar$var_cat!="ASVs","Var2"],corcirvar[corcirvar$var_cat=="ASVs","Var2"]]%>%
+    as.data.frame()
+  
+  df_plot <- data %>%
+    mutate(Env_var=gsub(paste0("_",i),"",rownames(.)))%>%
+    reshape2::melt()%>%
+    left_join(rename(names_df_clean,Env_var=Var2))%>%
+    mutate(fullname=ifelse(is.na(fullname),Env_var,fullname))
+           
+  p2tmp <- df_plot%>%
+    ggplot(aes(y=fullname,x=variable,fill=value))+
+    geom_tile(color = "white",linewidth=.0001)+
+    ylab('Environment')+
+    theme(axis.text.x = element_text(angle = 90,vjust = .5,size=6),
+          panel.background = element_blank(),
+          legend.position = "right",
+          axis.title = element_blank(),
+          plot.margin = unit(c(0, 0, 0, 0), "lines"))+
+    scale_fill_gradient2(low = "darkblue",mid = "lightyellow3", high = "#a30800",limits=c(-0.6,0.6),breaks=c(-.6,-.3,0,.3,.6))+
+    scale_x_discrete(limits = colnames(data[,colnames(data)%in%df_plot$variable])[hclust(dist(t(data[,colnames(data)%in%df_plot$variable])))$order])+
+    scale_y_discrete(limits = unique(left_join(data.frame(Env_var=gsub(paste0("_",i),"", rownames(data[gsub(paste0("_",i),"",rownames(data))%in%df_plot$Env_var,])[hclust(dist((data[gsub(paste0("_",i),"",rownames(data))%in%df_plot$Env_var,])))$order])),df_plot)$fullname))+
+    ggtitle(ifelse(i=="st","Short term","Long term"))
+  
+  plot_hmap[[i]] <- p2tmp
+}
+```
+
+
+## multiblock spls Mixomics
+
+```{r}
+library(mixOmics)
+data_tmp <- meco_16s_relabfiltered
+data_tmp <- clone(data_tmp)
+mixomics_com <- t(data_tmp$otu_table)
+cutoff2use <- .5
+hmap_plot_list <- NULL
+corcirplot_list <- NULL
+ordered_list <- NULL
+corcirplot_list_module <- NULL
+for(i in c("lt","st")){
+  
+  mixomics_com <- mixomics_com[,which(colSums(mixomics_com!=0)!=1)] # remove samplewise singletons
+  var_tmp <- get(paste0("var_",i))
+  mixomics_com <- labdsv::hellinger(mixomics_com)
+  
+  mydata <- list(df1 = combined[c("ph",var_tmp,"nb_reads")],
+                 df2 = mixomics_com,
+                 df3 = pcnmtest$vectors) #Here you build your two datasets that should be integrated
+  
+  lapply(mydata, dim) # check dimensions
+  
+  rownames(mydata$df1) <- combined$Sample
+  rownames(mydata$df2) <- gsub("[A-Z]|-|(?=_).*","",rownames(mixomics_com),perl = T)
+  mydata$df2 <- mydata$df2[match(rownames(mydata$df1),rownames(mydata$df2)),]
+  rownames(mydata$df3) <- combined$Sample
+  
+  basic.mbspls.model <- block.spls(mydata, indY = 1, # generate basic model
+                                   ncomp = 5)
+  
+  choice.ncomp <- 5
+  # choice.keepX <- list(df1 = rep(11,5), 
+  #                    df2 = rep(c(1:15,seq(16,100,5),seq(101,822,30),822),5), 
+  #                    df3 = rep(c(seq(1,35,5),34)),5)
+  
+  choice.keepX <- list(df1 = rep(11, 5), 
+                       df2 = rep(50, 3), 
+                       df3 = rep(15, 3))
+  
+  final.mbspls.model <-  block.spls(mydata, indY = 1,  
+                                    ncomp = choice.ncomp, 
+                                    keepX = choice.keepX)
+  
+  data_var <- plotVar(final.mbspls.model,var.names = T,
+                      legend = TRUE, cutoff = 0,
+                      pch = c(0,1,2))
+  corcirvar <- data_var
+  corcirvar%<>%
+    mutate(names=rownames(.))%>%
+    mutate(names=gsub(paste0("_",i),"",names))%>%
+    left_join(rename(names_df_clean,names=Var2))%>%
+    mutate(midname=ifelse(is.na(midname),names,midname))%>%
+    mutate(var_cat=ifelse(grepl("Cluster",names),"ASVs",
+                          ifelse(grepl("PCNM",names),"PCNMs","Variables")))%>%
+    mutate(var_cat=as.factor(var_cat))%>%
+    mutate(wellrep = ifelse(abs(x)>cutoff2use|abs(y)>cutoff2use,"yes","no"))%>%
+    left_join(rename(net2$res_node_table,names=name))
+  
+  corcirplot_list[[i]] <- ggplot(corcirvar, aes(x = x, y = y)) +
+    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
+    geom_point(data = filter(corcirvar,var_cat=="ASVs"), # add arrows for variables
+               aes(color=var_cat,alpha=wellrep),size=3,shape=16) +
+    scale_color_manual(values = "darkred",name="",label="ASVs")+
+    scale_alpha_manual(values = c(.3,1),label = paste0(c("|cor|>","|cor|<"),cutoff2use), name = "OTUs correlation")+
+    ggnewscale::new_scale_color()+
+    geom_point(data = filter(corcirvar,var_cat!="ASVs"&wellrep=="yes"),aes(color = var_cat),size=4,shape=17)+
+    ggrepel::geom_text_repel(data =filter(corcirvar,var_cat!="ASVs"&wellrep=="yes"),aes(label=midname,color = var_cat))+
+    scale_color_manual(values =c(PCNMs= "darkcyan",
+                                 Variables="darkolivegreen4"), 
+                       name="Variable categories")+ 
+    guides(color = guide_legend(override.aes = aes(label = "")))+
+    xlim(c(-1,1))+
+    ylim(c(-1,1))+
+    geom_vline(xintercept = 0,linetype="dashed")+
+    geom_hline(yintercept = 0,linetype="dashed")+
+    theme_classic2()+
+    ylab("Component 2")+
+    xlab("Component 1")+
+    coord_fixed()+
+    ggtitle(ifelse(grepl("lt",i),"Long term","Short term"))
+  
+  corcirplot_list_module[[i]] <- ggplot(corcirvar, aes(x = x, y = y)) +
+    ggforce::geom_circle(aes(x0=0,y0=0,r=1),color="black")+
+    geom_point(data = filter(corcirvar,var_cat=="ASVs"), # add arrows for variables
+               aes(color=module,alpha=wellrep),size=3,shape=16) +
+    scale_color_manual(values = module_col,name="Modules")+
+    scale_alpha_manual(values = c(.3,1),label = paste0(c("|cor|>","|cor|<"),cutoff2use), name = "OTUs correlation")+
+    ggnewscale::new_scale_color()+
+    geom_point(data = filter(corcirvar,var_cat!="ASVs"&wellrep=="yes"),aes(color = var_cat),size=4,shape=17)+
+    ggrepel::geom_text_repel(data =filter(corcirvar,var_cat!="ASVs"&wellrep=="yes"),aes(label=midname,color = var_cat))+
+    scale_color_manual(values =c(PCNMs= "darkcyan",
+                                 Variables="darkolivegreen4"), 
+                       name="Variable categories")+ 
+    guides(color = guide_legend(override.aes = aes(label = "")))+
+    xlim(c(-1,1))+
+    ylim(c(-1,1))+
+    geom_vline(xintercept = 0,linetype="dashed")+
+    geom_hline(yintercept = 0,linetype="dashed")+
+    theme_classic2()+
+    ylab("Component 2")+
+    xlab("Component 1")+
+    coord_fixed()+
+    ggtitle(ifelse(grepl("lt",i),"Long term","Short term"))
+  
+  
+  hmap_data_list <- list(hmap_data12=cim(final.mbspls.model,blocks = c('df1','df2')),
+                         hmap_data13=cim(final.mbspls.model,blocks = c('df1','df3')),
+                         hmap_data23=cim(final.mbspls.model,blocks = c('df2','df3')))
+  
+  for(j in names(hmap_data_list)){
+    
+    hmap_data_tmp <-hmap_data_list[[j]]
+    
+    data <- hmap_data_tmp$mat[which(rownames(hmap_data_tmp$mat)%in%rownames(data_var)),which(colnames(hmap_data_tmp$mat)%in%rownames(data_var))]%>%
+      as.data.frame()
+    df_plot <- data %>%
+      mutate(Var=rownames(.))%>%
+      reshape2::melt()
+    
+    hmap_plot_list[[i]][[j]] <-   df_plot%>%
+      ggplot(aes(y=Var,x=variable,fill=value))+
+      geom_tile(color = NA,linewidth=.0001)+
+      ylab('Var')+
+      theme(axis.text.x = element_text(angle = 90,vjust = .5,size=6),
+            panel.background = element_blank(),
+            legend.position = "right",
+            axis.title = element_blank(),
+            plot.margin = unit(c(0, 0, 0, 0), "lines"))+
+      scale_fill_gradient2(low = "darkblue",mid = "lightyellow3", high = "#a30800")+
+      scale_x_discrete(limits = colnames(data[,colnames(data)%in%df_plot$variable])[hclust(dist(t(data[,colnames(data)%in%df_plot$variable])))$order])+
+      scale_y_discrete(limits = rownames(data[rownames(data)%in%df_plot$Var,])[hclust(dist((data[rownames(data)%in%df_plot$Var,])))$order])
+    ordered_list[[i]][[j]][["colnames"]] <- colnames(data[,colnames(data)%in%df_plot$variable])[hclust(dist(t(data[,colnames(data)%in%df_plot$variable])))$order]
+    
+    ordered_list[[i]][[j]][["rownames"]] <- rownames(data[rownames(data)%in%df_plot$Var,])[hclust(dist((data[rownames(data)%in%df_plot$Var,])))$order]
+  }
+}
+```
+
+```{r}
+ggsave("Figures/multispls_corcirvar.png",corcirplot_list$lt+corcirplot_list$st,width=15,height = 9)
+ggsave("Figures/multispls_hmap.png",hmap_plot_list$lt$hmap_data12+hmap_plot_list$lt$hmap_data13+hmap_plot_list$lt$hmap_data23+hmap_plot_list$st$hmap_data12+hmap_plot_list$st$hmap_data13+hmap_plot_list$st$hmap_data23+plot_layout(widths = c(1,1,1),heights = c(1,1)),width=21,height = 16)
+
+
+ggsave("Figures/multispls_corcirvar_module.png",corcirplot_list_module$lt+corcirplot_list_module$st,width=15,height = 9)
+```
+
+
+```{r}
+hmap_data_list$hmap_data12$mat%>%View
+layer_scales(hmap_plot_list$lt$hmap_data12)$x$range$range
+```
+
+
+
+##comp with countries
+
+```{r}
+    combined$distfrom01 <- c(0,distfrom01)
+
+plots_comp <- NULL
+for( i in c("Order_conf_rdp","Genus_conf_rdp")){
+  for(j in c("meco_16s_ns","meco_16s_relabfiltered")){
+    tmp16s <- clone(get(j))
+    tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+    tmp16s$otu_table %<>% filter(rowSums(.)>1)
+    tmp16s$tidy_dataset()
+    
+    tmp16s$cal_abund()
+    tmp16s1 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8,groupmean = "dumb_group")
+    
+    plot_data1 <- tmp16s1$data_abund
+    use_taxanames <- tmp16s1$data_taxanames
+    plot_data1$Taxonomy[!plot_data1$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data1 %<>% 
+      dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+      dplyr::summarise(Abundance = sum(Abundance)) %>% 
+      as.data.frame(stringsAsFactors = FALSE)
+    plot_data1$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+    plot_data1$label <- paste0(round(plot_data1$Abundance, 1),"%")
+    donut_comp <- ggdonutchart(plot_data1,"Abundance",
+                               fill="Taxonomy",
+                               label = "label",
+                               color = "white",
+                               palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"),
+                               guide = guide_legend(reverse = TRUE) )+
+      theme(legend.position = "right")
+    
+    tmp16s2 <- trans_abund$new(tmp16s,taxrank = i,ntaxa = 8)
+    plot_data2 <- tmp16s2$data_abund
+    plot_data2$Taxonomy[!plot_data2$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+    plot_data2$Taxonomy %<>% factor(., levels = rev(c(use_taxanames[-9], "Others","unidentified")))
+    plot_data2 <- left_join(plot_data2,rename(combined[,c("sample_id","distfrom01","BIOME_NAME")],Sample=sample_id))
+    plot_data2%<>%
+      mutate(Sample=as.factor(Sample))%>%
+      mutate(Sample=fct_relevel(Sample,unique(as.character(Sample))))
+    bar_comp <- (plot_data2%>%
+      ggplot(aes(x=Sample,y=Abundance,fill=Taxonomy),color=NA)+
+      geom_bar(stat = "identity",width=1,position='fill')+
+      scale_fill_manual(values =  rev(c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey")),
+                        guide = guide_legend(reverse = TRUE) )+
+      scale_y_continuous(expand = c(0,0))+
+      theme(axis.text.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            plot.margin = unit(c(0,0,0,0),units="mm"),
+            axis.title.x = element_blank()))/(
+    ggplot(plot_data2,aes(x=Sample,y=1,fill=Country))+
+      geom_tile()+
+      scale_fill_manual(values=country_color)+
+      theme_void())+plot_layout(guides="collect",heights = c(9,1))
+    
+    
+    
+    plots_comp[[i]][[j]] <- donut_comp + bar_comp  +  plot_annotation(title = ifelse(j=="meco_16s_ns","No singletons","Filtered at 5% relative abundance")) & theme(plot.title = element_text(face='bold'))
+  }
+}
+```
+
+```{r}
+ggsave("Figures/comp_order_ns_country.png",plots_comp$Order_conf_rdp$meco_16s_ns,width = 14)
+ggsave("Figures/com_genus_ns_country.png",plots_comp$Genus_conf_rdp$meco_16s_ns,width = 14)
+ggsave("Figures/comp_order_filt_country.png",plots_comp$Order_conf_rdp$meco_16s_relabfiltered,width = 14)
+ggsave("Figures/com_genus_filt_country.png",plots_comp$Genus_conf_rdp$meco_16s_relabfiltered,width = 14)
 ```
 
