@@ -2626,6 +2626,7 @@ pca_site_biplot <- NULL
 scree_plot_list <- NULL
 pca_site_biplot_eco <- NULL
 biomes_color <- c("#F6D55C","#ED553B","#173F5F","#3CAEA3","#20639B")
+country_color <- c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3")
 for(i in data_sets){
     pca_tmp <- get(i)
     
@@ -2688,7 +2689,7 @@ for(i in data_sets){
                                  max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
         ggtitle(paste0("Biplot sites ",i))+
         theme(plot.title = element_text(face="bold"))+
-      scale_fill_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+      scale_fill_manual(values = country_color)+
   stat_ellipse(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=eco_name))  
 }
 ```
@@ -2944,7 +2945,7 @@ combined%>%
   combined%>%
   ggplot(aes(x=tmmx_lt,y= pr_lt, color = ECO_NAME))+
   geom_point()+
-  scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  scale_color_manual(values = country_color)+
   theme_classic2()+
   ylab("Monthly precipitation (mm)")+
   xlab("Monthly max temperature (C°)")
@@ -2953,7 +2954,7 @@ combined%>%
   combined%>%
   ggplot(aes(x=tmmx_lt,y= pr_lt, color = Country))+
   geom_point()+
-  scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  scale_color_manual(values = country_color)+
   theme_classic2()+
   ylab("Monthly precipitation (mm)")+
   xlab("Monthly max temperature (C°)")
@@ -2988,6 +2989,7 @@ load("outputs/site_data_imputed.RDS")
 
 ```{r}
 biomes_color <- c("#F6D55C","#ED553B","#173F5F","#3CAEA3","#20639B")
+country_color <- c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3")
 ```
 
 # -----------------------------------
@@ -3008,7 +3010,7 @@ names_df_clean <-data.frame(fullname= c("Geographic","pH","Evapo-transpiration",
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
 # Subset the world data to include only the specified latitude range
-cropping <- as(raster::extent(-180, 180, 20, 90), "SpatialPolygons")
+cropping <- as(raster::extent(-180, 180, 27, 90), "SpatialPolygons")
 
 
 world_subset <- raster::crop(as_Spatial(world),cropping)
@@ -3020,17 +3022,19 @@ world_lambert <- st_transform(st_as_sf(world_subset), crs = lambert_proj)
 ## Formula
 
 ```{r}
-var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
-var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
-var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+combined$Depth <- colSums(meco_16s_ns$otu_table)
+var_lt <- colnames(combined)[which(grepl("_lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("_st",colnames(combined)))]
+# var_interest <- c("aet","pr","swe","tmmn","tmmx","vpd","elevation","evi","fpar","gpp","ph","soc")
+var_interest <- c("pr","swe","tmmn","vpd","gpp")
 var_lt <- var_lt[which(gsub("_lt","",var_lt)%in%var_interest)]
 var_st <- var_st[which(gsub("_st","",var_st)%in%var_interest)]
 
 XFormula_lt <- paste(var_lt,sep="", collapse = "+")
 XFormula_st <- paste(var_st,sep="", collapse = "+")
 
-XFormula_lt <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_lt ,"+ log(nb_reads)")
-XFormula_st <- paste0("nb_asvs ~ ph + height + water + gHM + soc +", XFormula_st ,"+ log(nb_reads)")
+XFormula_lt <- paste0("nb_asvs ~ ph +", XFormula_lt ,"+ log(Depth)")
+XFormula_st <- paste0("nb_asvs ~ ph +", XFormula_st ,"+ log(Depth)")
 ```
 
 ## Different variable
@@ -3103,6 +3107,51 @@ for(i in c("_st","_lt")){
     facet_wrap("fullname",scales = "free_x")+
     ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))
 }
+```
+
+## NNr
+
+```{r}
+mat_geo <- geosphere::distm(combined[,c("X2","Y2")])
+mat_geo[mat_geo>100000] <- 0 
+mat_geo[mat_geo!=0] <- 1 
+library(igraph)
+g <- graph_from_adjacency_matrix(mat_geo, mode = 'undirected', weighted = T)
+plot(g, edge.width = E(g)$weigths, vertex.size = 3, vertex.label.cex = .8, vertex.shape = 'none', layout = scale(as.matrix(combined[,c("X2","Y2")])),edge.color="red",edge.width=1)
+count_components(g) #62 clusters @100km
+plot(g, edge.width = E(g)$weigths, vertex.size = 3, vertex.label.cex = .8, vertex.shape = 'none', edge.color="red",edge.width=1)
+
+clust<-cluster_optimal(g)
+clust$membership
+
+(sitesfil <- st_as_sf(meco_16s_relabfiltered$sample_table, coords = c("X", "Y"), 
+                   crs = 4326, agr = "constant"))
+
+sitesfil$nb_asvs <- colSums(meco_16s_relabfiltered$otu_table>0)
+sitesfil$clust_nnr <- as.factor(clust$membership)
+mappfil <- ggplot() +
+  geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+  geom_sf(data = sitesfil, size = 3, shape = 23, aes(fill = clust_nnr),alpha=.7) +
+  ggtitle("MAPP 16s sites") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16))+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = "azure"))
+
+ggsave("Figures/map_fil.png",mappfil)
+
+tlblb <- combined
+tlblb$nnr_cluster <- as.factor(clust$membership)
+
+tlblb%>%
+  ggplot(aes(x=nnr_cluster,fill=Country))+
+  geom_bar()+
+  scale_fill_manual(values=country_color)+
+  ggpubr::theme_classic2()
+tlblb%>%
+  ggplot(aes(x=nnr_cluster,fill=BIOME_NAME))+
+  geom_bar()+
+  scale_fill_manual(values=biomes_color)+
+  ggpubr::theme_classic2()
 ```
 
 
@@ -3226,7 +3275,6 @@ p <- FactoMineR::PCA(mems2[,1:12],graph=F)%>%
 ggsave("Figures/mems2_PCA.png",p)
 ```
 
-
 ## Alpha div patterns
 
 ```{r}
@@ -3301,7 +3349,7 @@ ggplot(combined,aes(x=BIOME_NAME,y=nb_reads,color=BIOME_NAME))+
 ```{r}
 ggplot(combined,aes(x=ECO_NAME,y=nb_asvs,color=ECO_NAME))+
   geom_boxplot(outlier.shape = NA)+
-  scale_color_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"), name="Biome")+
+  scale_color_manual(values=country_color, name="Biome")+
   geom_jitter()+
   theme_classic2()+
   ylab("ASVs richness")+
@@ -3310,7 +3358,7 @@ ggplot(combined,aes(x=ECO_NAME,y=nb_asvs,color=ECO_NAME))+
   facet_wrap(~BIOME_NAME,scales = "free_x")+
 ggplot(combined,aes(x=ECO_NAME,y=nb_reads,color=ECO_NAME))+
   geom_boxplot(outlier.shape = NA)+
-  scale_color_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"), name="Biome")+
+  scale_color_manual(values=country_color, name="Biome")+
   geom_jitter()+
   theme_classic2()+
   ylab("Sequencing depth")+
@@ -3320,6 +3368,49 @@ ggplot(combined,aes(x=ECO_NAME,y=nb_reads,color=ECO_NAME))+
   facet_wrap(~BIOME_NAME,scales = "free_x")
 ```
 
+### Venn diagrams
+
+```{r}
+ merged_16s_ps <- merge_samples(file2meco::meco2phyloseq(filtered_16s),"Trtmt")
+
+DP  <-  colnames(merged_16s_ps@otu_table["DP", apply(merged_16s_ps@otu_table["DP",], MARGIN=2, function(x) any(x >0))])
+DSP  <-  colnames(merged_16s_ps@otu_table["DSP", apply(merged_16s_ps@otu_table["DSP",], MARGIN=2, function(x) any(x >0))])
+DPS  <-  colnames(merged_16s_ps@otu_table["DPS", apply(merged_16s_ps@otu_table["DPS",], MARGIN=2, function(x) any(x >0))])
+WP  <-  colnames(merged_16s_ps@otu_table["WP", apply(merged_16s_ps@otu_table["WP",], MARGIN=2, function(x) any(x >0))])
+WSP  <-  colnames(merged_16s_ps@otu_table["WSP", apply(merged_16s_ps@otu_table["WSP",], MARGIN=2, function(x) any(x >0))])
+WPS  <-  colnames(merged_16s_ps@otu_table["WPS", apply(merged_16s_ps@otu_table["WPS",], MARGIN=2, function(x) any(x >0))])
+
+library(ggVennDiagram)
+library(sf)
+
+x <- list(DSP,DPS,DP,WSP,WPS,WP)
+names(x) <- c("DSP","DPS","DP","WSP","WPS","WP")
+venn <- Venn(x)
+d <- process_data(venn)
+d2 <- process_data(venn)
+
+d2@region <- st_polygonize(d@setEdge)
+
+col <- mo_col
+
+mutate( venn_region(d2),name=fct_relevel(name,"DSP","DPS","DP","WSP","WPS","WP"))
+
+gvenn_16s <- ggplot() +
+  geom_sf(aes(fill = name), alpha = .2, data =
+            mutate( venn_region(d2),name=fct_relevel(name,"DSP","DPS","DP","WSP","WPS","WP")))+
+  geom_sf(aes(color = name), data =
+            mutate( venn_setedge(d),name=fct_relevel(name,"DSP","DPS","DP","WSP","WPS","WP")) )+
+  geom_sf_text(aes(label = name), data =
+                 mutate( venn_setlabel(d),name=fct_relevel(name,"DSP","DPS","DP","WSP","WPS","WP")),
+               size = 6)+
+  geom_sf_text(aes(label = count), data =
+                 mutate(venn_region(d),name=fct_relevel(name,"DSP","DPS","DP","WSP","WPS","WP")),
+               size = 5) +
+  scale_color_manual(values = col) +
+  scale_fill_manual(values = col) +
+  theme_void()
+
+```
 
 ## Cyto pattern
 
@@ -3532,7 +3623,7 @@ meco_16s_ns$sample_table%<>%
        ggplot(aes(x=1,y=gsub("[A-Z]|-|(?=_).*","",Sample,perl = T),fill=ECO_NAME))+
        geom_tile()+
        coord_flip()+
-       scale_fill_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+       scale_fill_manual(values=country_color)+
        theme_void())+        
   guides(fill=guide_legend(ncol=3))+
   plot_layout(heights = c(9,1),guides="collect")
@@ -3763,7 +3854,7 @@ for(i in c("_lt","_st")){
       geom_point(data = subset(fort_rda_tmp, score == "sites"), 
                  aes(color = ECO_NAME), 
                  size = 3) +
-      scale_color_manual(values = c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+      scale_color_manual(values = country_color)+
       geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
                    aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
                    lineend = "round", 
@@ -4373,30 +4464,33 @@ for(i in c("lt","st")){
     bioclim_predictors <- c("ph",bioclim_predictors)
     
     
-    comunity_df_hellingered <- as.data.frame(labdsv::hellinger(t(meco_tmp$otu_table))) # extract community matrices and transform to hellinger
+    comunity_df_hellingered <- as.data.frame(labdsv::hellinger(t(meco_tmp$otu_table))) # extract community matrices and transform to hellinger - labdsv::hellinger()
     
-    comunity_df_hellingered$siteCol <-  gsub("[A-Z]|-|(?=_).*","",rownames(comunity_df_hellingered),perl = T)  # get site name (i.e., sample)
+    comunity_df_hellingered$sitename <-  gsub("[A-Z]|-|(?=_).*","",rownames(comunity_df_hellingered),perl = T)  # get site name (i.e., sample)
     comunity_df_hellingered %<>%  
-        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))%>% # reformat 1 into 001 and 64 to 064 etc...
-        mutate(siteCol=ifelse(nchar(siteCol)<3,paste0("0",siteCol),siteCol))
-    data_sat_tmp %<>% rename(siteCol=Sample) # rename 
+        mutate(sitename=ifelse(nchar(sitename)<3,paste0("0",sitename),sitename))%>% # reformat 1 into 001 and 64 to 064 etc...
+        mutate(sitename=ifelse(nchar(sitename)<3,paste0("0",sitename),sitename))
+    data_sat_tmp %<>% rename(sitename=Sample) # rename 
     
-    gdm_biodata <- left_join(comunity_df_hellingered,data_sat_tmp[,c("siteCol","X","Y")]) %>% # create gdm_biodata with site X and Y (long and lat)
-        relocate(siteCol,X,Y)
+    gdm_biodata <- left_join(comunity_df_hellingered,data_sat_tmp[,c("sitename","X","Y")]) %>% # create gdm_biodata with site X and Y (long and lat)
+        relocate(sitename,X,Y)
     gdm_preddata <- data_sat_tmp %>%
-        filter(siteCol%in%gdm_biodata$siteCol) %>% #remove sites not in biodata
-        dplyr::select(all_of(c(bioclim_predictors,"siteCol"))) # get only variables we are interested in
+        filter(sitename%in%gdm_biodata$sitename) %>% #remove sites not in biodata
+        dplyr::select(all_of(c(bioclim_predictors,"sitename"))) # get only variables we are interested in
     
+    # gdm_biodata <- as.data.frame(as.matrix(vegdist(gdm_biodata[,-c(1:3)],method = "horn")))
+    # gdm_biodata$sitename <- combined$Sample
     gdm_formated_tmp <- gdm::formatsitepair(bioData = gdm_biodata, # create data in the gdm format
                                             bioFormat = 1,
-                                            dist="horn",
+                                            dist = "horn",
                                             abundance = T,
-                                            siteColumn = "siteCol",
+                                            siteColumn = "sitename",
                                             sppColumn = NULL,
                                             abundColumn = NULL,
                                             XColumn = "X",
                                             YColumn = "Y",
-                                            predData = gdm_preddata)
+                                            predData = left_join(gdm_preddata,data_sat_tmp[,c("sitename","X","Y")]))
+    # gdm_formated_tmp$evaluated_pair <- rownames(gdm_formated_tmp)
     gdm_formated[[i]][[j]] <- gdm_formated_tmp # store formated data
     gdm_fitted[[i]][[j]] <- gdm::gdm(gdm_formated_tmp, # fit gdm
                                 geo = T)
@@ -4408,6 +4502,7 @@ for(i in c("lt","st")){
 gdm_plot_var <- NULL
 gdm_plot_pred <- NULL
 gdm_var_contrib <- NULL
+gdm_hmap <- NULL
 for(i in c("lt","st")){
   
   for(j in c("filt","nonfilt")){
@@ -4442,7 +4537,7 @@ for(i in c("lt","st")){
       ylab("Max effect")+
       theme_bw()+
       theme(axis.text.x = element_text(angle=45,hjust=1,vjust=1))
-      
+    
     # PRED
     
     gdm_pred_data <- predict(object=gdm_fitted[[i]][[j]],
@@ -4480,6 +4575,127 @@ for(i in c("lt","st")){
       xlab("Observed dissimilarity")+
       ylab("Predicted dissimilarity")
     
+    
+    
+    # creating a data frame of vector1 and vector2 combinations
+    mat <- matrix(nrow = 199,ncol = 199,dimnames = list(gdm_biodata$sitename,gdm_biodata$sitename))
+    mat[upper.tri(mat)] <- 0
+    evaluated_pairs <- reshape2::melt(mat)%>%
+      filter(value==0)%>%
+      tidyr::unite("eval_pair",c("Var1","Var2"),sep = "-",remove = F)
+    
+    df_hmap_gdm <- data.frame(eco=gdm_fitted[[i]][[j]]$ecological,
+                              obs=gdm_fitted[[i]][[j]]$observed,
+                              pred=gdm_fitted[[i]][[j]]$predicted,
+                              evaluated_pairs=evaluated_pairs$eval_pair,
+                              site1=evaluated_pairs$Var1,
+                              site2=evaluated_pairs$Var2)
+    
+    df_hmap_gdm%<>%
+      mutate(Sample=site1)%>%
+      left_join(combined[,c("Sample","Country","BIOME_NAME")])
+    
+    df_hmap_gdm%<>%
+      rename(Sample1=Sample,
+             Country1=Country,
+             BIOME_NAME1=BIOME_NAME)%>%
+      mutate(Sample=site2)%>%
+      left_join(combined[,c("Sample","Country","BIOME_NAME")])
+    
+    layout <- "
+    ABC
+    D##
+    E##
+    "
+    
+    gdm_hmap[[i]][[j]][["eco"]]  <- (df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=site2,fill=arules::discretize(eco,breaks = 7)))+
+                                       geom_tile()+
+                                       scale_fill_viridis_d()+
+                                       ggtitle("Eco dist")+
+                                       theme(axis.text.x = element_text(angle=90))+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=1,y=site2,fill=BIOME_NAME))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=biomes_color,name='biomes')+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=1,y=site2,fill=Country))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=country_color,name='country')+
+                                       
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=1,fill=BIOME_NAME1))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=biomes_color,name='biomes')+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=1,fill=Country1))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=country_color,name='country'))+
+      plot_layout(guides = "collect",heights =  c(8,.5,.5),widths = c(8,.5,.5),design = layout)
+    
+    
+    gdm_hmap[[i]][[j]][["obs"]]  <- (df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=site2,fill=arules::discretize(obs,breaks = 7)))+
+                                       geom_tile()+
+                                       scale_fill_viridis_d()+
+                                       ggtitle("Obs dist")+
+                                       theme(axis.text.x = element_text(angle=90))+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=1,y=site2,fill=BIOME_NAME))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=biomes_color,name='biomes')+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=1,y=site2,fill=Country))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=country_color,name='country')+
+                                       
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=1,fill=BIOME_NAME1))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=biomes_color,name='biomes')+
+                                       df_hmap_gdm%>%
+                                       ggplot(aes(x=site1,y=1,fill=Country1))+
+                                       geom_tile()+
+                                       theme_void()+
+                                       scale_fill_manual(values=country_color,name='country'))+
+      plot_layout(guides = "collect",heights =  c(8,.5,.5),widths = c(8,.5,.5),design = layout)
+    
+    
+    gdm_hmap[[i]][[j]][["pred"]]  <- (df_hmap_gdm%>%
+                                        ggplot(aes(x=site1,y=site2,fill=arules::discretize(pred,breaks = 7)))+
+                                        geom_tile()+
+                                        scale_fill_viridis_d()+
+                                        ggtitle("Pred dist")+
+                                        theme(axis.text.x = element_text(angle=90))+
+                                        df_hmap_gdm%>%
+                                        ggplot(aes(x=1,y=site2,fill=BIOME_NAME))+
+                                        geom_tile()+
+                                        theme_void()+
+                                        scale_fill_manual(values=biomes_color,name='biomes')+
+                                        df_hmap_gdm%>%
+                                        ggplot(aes(x=1,y=site2,fill=Country))+
+                                        geom_tile()+
+                                        theme_void()+
+                                        scale_fill_manual(values=country_color,name='country')+
+                                        
+                                        df_hmap_gdm%>%
+                                        ggplot(aes(x=site1,y=1,fill=BIOME_NAME1))+
+                                        geom_tile()+
+                                        theme_void()+
+                                        scale_fill_manual(values=biomes_color,name='biomes')+
+                                        df_hmap_gdm%>%
+                                        ggplot(aes(x=site1,y=1,fill=Country1))+
+                                        geom_tile()+
+                                        theme_void()+
+                                        scale_fill_manual(values=country_color,name='country'))+
+      plot_layout(guides = "collect",heights =  c(8,.5,.5),widths = c(8,.5,.5),design = layout)
   }
 }
 ```
@@ -4492,7 +4708,15 @@ for(i in c("lt","st")){
     ggsave(paste0("Figures/gdm_",j,"_",i,".png"),ptmp,width=12,height = 10)
     ptmp2 <- (gdm_var_contrib[[i]][[j]])
     ggsave(paste0("Figures/gdm_maxvar_",j,"_",i,".png"),ptmp2,width=4,height = 5)
-
+    
+    ptmp <- gdm_hmap[[i]][[j]][["eco"]]
+    ggsave(paste0("Figures/gdm_",j,"_",i,"_eco.png"),ptmp,width=12,height = 16)
+    
+    ptmp <- gdm_hmap[[i]][[j]][["pred"]]
+    ggsave(paste0("Figures/gdm_",j,"_",i,"_pred.png"),ptmp,width=12,height = 16)
+    
+    ptmp <- gdm_hmap[[i]][[j]][["obs"]]
+    ggsave(paste0("Figures/gdm_",j,"_",i,"_obs.png"),ptmp,width=12,height = 16)
   }
 }
 ```
@@ -5133,5 +5357,2008 @@ ggsave("Figures/comp_order_ns_country.png",plots_comp$Order_conf_rdp$meco_16s_ns
 ggsave("Figures/com_genus_ns_country.png",plots_comp$Genus_conf_rdp$meco_16s_ns,width = 14)
 ggsave("Figures/comp_order_filt_country.png",plots_comp$Order_conf_rdp$meco_16s_relabfiltered,width = 14)
 ggsave("Figures/com_genus_filt_country.png",plots_comp$Genus_conf_rdp$meco_16s_relabfiltered,width = 14)
+```
+
+
+# B - FIGURES
+
+
+geographic cluster
+```{r}
+mat_geo <- geosphere::distm(combined[,c("X2","Y2")])
+colnames(mat_geo) <-rownames(mat_geo)  <- combined$Sample
+clust_geo <- hclust(as.dist(mat_geo))
+
+
+mat_eco <- as.matrix(vegdist(scale(combined[,c("ph",var2use)]),method = "euclidean"))
+colnames(mat_eco) <-rownames(mat_eco)  <- combined$Sample
+mat_bio <- as.matrix(vegdist((labdsv::hellinger(t(meco_16s_ns$otu_table))),method = "horn"))
+colnames(mat_bio) <-rownames(mat_bio)  <- combined$Sample
+clust_eco <- hclust(as.dist(mat_eco))
+
+clustered_eco <- cutree(clust_eco,k = 6)
+combined$eco_groups <- as.factor(paste0("G",clustered_eco))
+
+clustered_dist <- cutree(clust_geo,k = 6)
+combined$cluster_geo <- as.factor(clustered_dist)
+combined$geo_region <- fct_recode(combined$cluster_geo,"NE Europe"="1",
+                                  "SW Europe"="2",
+                                  "NE America"="3",
+                                  "China"="4",
+                                  "NW America"="5",
+                                  "Azores"="6")
+
+
+# geoclustid <- c(1:6)
+# geoclustname <- c("NE Europe",
+#                   "SW Europe",
+#                   "NE America",
+#                   "China",
+#                   "NW America",
+#                   "Azores")
+# "#A8CDECFF", "#F6955EFF", "#682C37FF", "#9B6981FF", "#7887A4FF", "#A89F8EFF"
+# "#F4E7C5FF", "#678096FF", "#ACC2CFFF", "#979461FF", "#CD5733FF", "#A12A19FF"
+# "#C52E19FF", "#AC9765FF", "#54D8B1FF", "#B67C3BFF", "#175149FF", "#AF4E24FF"
+# "#FED789FF", "#023743FF", "#72874EFF", "#476F84FF", "#A4BED5FF", "#453947FF"
+# 
+# 
+# "#F4E7C5FF"
+# "#CEA347FF"
+# "#AF4E24FF"
+# "cornflowerblue"
+# "#A8CDECFF"
+# "#175149FF"
+
+color_geo_clust <- c("NE Europe"="#F4E7C5FF",
+                     "SW Europe"="#CEA347FF",
+                     "NE America"="#AF4E24FF",
+                     "China"="cornflowerblue",
+                     "NW America"="#A8CDECFF",
+                     "Azores"="#57837BFF")
+# 
+# c("G1"="#FF652F",
+#                      "G2"="#FFE400",
+#                      "G3"="#14A76C",
+#                      "G4"="#00ADE0",
+#                      "G5"="#E0009B",
+#                      "G6"="#4100E0")
+#008FF8FF, #B6AA0DFF, #E2C2A2FF, #E23B0EFF, #F2C621FF, #196689FF
+#881C00FF, #AF6125FF, #F4E3C7FF, #1BB6AFFF, #0076BBFF, #172869FF
+color_eco_clust <- c("G1"="#881C00FF",
+                     "G2"="#B6AA0DFF",
+                     "G3"="#E2C2A2FF",
+                     "G4"="#1BB6AFFF",
+                     "G5"="#F2C621FF",
+                     "G6"= "#2A66B8")
+# color_eco_clust <- colorspace::lighten(color_eco_clust,amount = .1)
+d1 <- reshape2::melt(mat_bio)%>%
+  rename(valbio=value)
+d2 <- reshape2::melt(mat_eco)%>%
+  rename(valeco=value)
+d3 <- left_join(d1,d2)
+d3%>%
+  ggplot(aes(x=valeco,y=valbio))+
+  geom_point()
+```
+
+```{r}
+combined$continent <-countrycode::countrycode(sourcevar = combined[, "Country"],
+                            origin = "country.name",
+                            destination = "continent")
+combined%<>%
+  mutate(continent=ifelse(Country=="Wales",
+                          "Europe",
+                          ifelse(Country=="Azores",
+                                 "Azores",
+                                 ifelse(Country=="Alaska",
+                                 "Americas",
+                                 continent))))
+```
+
+```{r}
+meco_16s_ns$otu_table%>%
+  mutate(cluster=rownames(.))%>%
+  reshape2::melt()%>%
+  ggplot(aes(cluster,variable,fill=log1p(value)))+
+  geom_tile()
+```
+
+## Fig1
+
+The Map
+```{r}
+(sf_otu <- st_as_sf(meco_16s_ns$sample_table, coords = c("X", "Y"), 
+                    crs = 4326, agr = "constant"))
+
+sf_otu %<>%
+  left_join(combined)
+mappfig1 <- NULL
+for(i in 1:3){
+  
+  colorvar <- switch (i, 'eco_groups','BIOME_NAME','geo_region')
+  color_scheme <- switch(colorvar,
+                         'eco_groups'=color_eco_clust,
+                         'BIOME_NAME'=biomes_color,
+                         'geo_region'=color_geo_clust)
+  legend_name <- switch(colorvar,
+                        'eco_groups'="Ecological groups",
+                        'BIOME_NAME'="Biomes",
+                        'geo_region'="Regions")
+  
+  
+  mappfig1[[colorvar]] <- ggplot() +
+    geom_sf(data = world_lambert, fill = "grey", color = "darkgrey", size = 0.1)+
+    geom_sf(data = sf_otu, size = 2, shape = 18, aes(color = .data[[colorvar]]),alpha=.7) +
+    ggtitle("") +
+    theme(plot.title = element_text(hjust = 0.5, size = 16))+
+    theme_minimal()+
+    theme(panel.background = element_rect(fill = "azure"))+
+    scale_color_manual(values=color_scheme,name=legend_name)+
+    theme(legend.position = "n")
+  
+  ggsave(paste0("Figures/clean_fig/fig1/map_fig1_",colorvar,".png"),mappfig1[[colorvar]])
+}
+
+```
+
+The PCA
+
+```{r}
+arrowMul <- function(arrows, data, at = c(0, 0), fill = 0.75) {
+  u <- c(range(data[,1], range(data[,2])))
+  u <- u - rep(at, each = 2)
+  r <- c(range(arrows[, 1], na.rm = TRUE), range(arrows[, 2], na.rm = TRUE))
+  rev <- sign(diff(u))[-2]
+  if (rev[1] < 0)
+    u[1:2] <- u[2:1]
+  if (rev[2] < 0)
+    u[3:4] <- u[4:3]
+  u <- u/r
+  u <- u[is.finite(u) & u > 0]
+  fill * min(u)
+}
+```
+
+```{r}
+pca_site_var <- NULL
+scree_plot_var_list <- NULL
+for(i in c("st","lt")){
+  for(j in 1:3){
+  var2use <- get(paste0("var_",i))
+  pca_tmp <- combined %>% 
+    dplyr::select(all_of(c("ph",var2use,"X","Y")))%>%
+    rename(Longitude=X,Latitude=Y)%>%
+    FactoMineR::PCA(scale.unit = T,
+                    graph = F,
+                    quanti.sup=c(7:8))
+  
+  eig <- pca_tmp$eig
+  coord_pca <- as.data.frame(pca_tmp$ind$coord)
+  
+  colorvar <- switch (j, 'eco_groups','BIOME_NAME','geo_region')
+  color_scheme <- switch(colorvar,
+                         'eco_groups'=color_eco_clust,
+                         'BIOME_NAME'=biomes_color,
+                         'geo_region'=color_geo_clust)
+  legend_name <- switch(colorvar,
+                         'eco_groups'="Ecological groups",
+                         'BIOME_NAME'="Biomes",
+                         'geo_region'="Regions")
+  
+  coord_pca$site <- combined$Sample
+  coord_pca$tocol <- combined[,colorvar]
+
+  mul <- arrowMul(as.data.frame(pca_tmp$var$coord),
+                  pca_tmp$ind$coord,
+                  pca_tmp$quanti.sup$coord)
+  
+  rownames(pca_tmp$var$coord) <- gsub("_[l|s]t$","",rownames(pca_tmp$var$coord))
+  rownames(pca_tmp$var$coord) <- names_df_clean$midname[match(rownames(pca_tmp$var$coord),names_df_clean$Var2)]
+  pca_site_var[[i]][[colorvar]] <- ggplot()+
+    geom_point(coord_pca,mapping=aes(x=Dim.1,y=Dim.2,color=tocol))+
+    theme_classic2()+
+    geom_vline(xintercept = 0,lty=2)+
+    geom_hline(yintercept = 0,lty=2)+
+    xlab(paste0("PC1 (",round(eig[1,2],2),"%)"))+
+    ylab(paste0("PC2 (",round(eig[2,2],2),"%)"))+
+    geom_segment(data= as.data.frame(pca_tmp$var$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+                 lineend = "round", 
+                 linejoin = "round",
+                 linewidth = .75, 
+                 arrow = arrow(length = unit(0.2, "inches")),
+                 colour = "black" 
+    )+
+    geom_segment(data= as.data.frame(pca_tmp$quanti.sup$coord),aes(x = 0, y = 0, xend=mul*Dim.1, yend=mul*Dim.2),
+                 lineend = "round", 
+                 linejoin = "round",
+                 linewidth = .75, 
+                 arrow = arrow(length = unit(0.2, "inches")),
+                 colour = "grey" 
+    )+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$var$coord),pca_tmp$var$coord*mul), # add variable names at the end of arrows
+                             aes(x = Dim.1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                                 y = Dim.2*1.2,
+                                 label = var),
+                             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    ggrepel::geom_text_repel(data = data.frame(var=rownames(pca_tmp$quanti.sup$coord),pca_tmp$quanti.sup$coord*mul), # add variable names at the end of arrows
+                             aes(x = Dim.1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                                 y = Dim.2*1.2,
+                                 label = var),
+                             max.overlaps = getOption("ggrepel.max.overlaps", default = 15))+
+    scale_color_manual(values=color_scheme,name=legend_name)+
+    theme(legend.position = "n")
+  
+    scree_plot_var_list[[i]][[colorvar]] <- factoextra::fviz_screeplot(pca_tmp,barfill = "lightgrey", barcolor="lightgrey")+
+    geom_hline(yintercept = 100/(length(var2use)+1),color="red",lty=2)+
+    theme_classic2()+
+    ggtitle("")
+  ggsave(paste0("Figures/clean_fig/fig1/pca_",i,"_",colorvar,".png"),pca_site_var[[i]][[colorvar]]+scree_plot_var_list[[i]][[colorvar]],width = 12)
+  }
+
+}
+```
+hists
+```{r}
+mat_geo_trs <- mat_geo*(10^-3)
+mat_geo_trs%<>%
+  reshape2::melt()%>%
+  rename(Sample=Var1,
+         variable=Var2)%>%
+  mutate(variable="Pairwise site distance")
+
+
+
+hist_df <- combined %>% 
+  dplyr::select(all_of(c("Sample","ph",var2use,"X","Y")))%>%
+  rename(Longitude=X,Latitude=Y)%>%
+  reshape2::melt(id.vars="Sample") %>%
+  mutate(variable=gsub("_[l|s]t$","",variable))%>%
+  left_join(rename(names_df_clean,variable=Var2))
+
+mat_geo_trs$fullname <- mat_geo_trs$midname <-mat_geo_trs$variable
+
+hist_df <- rbind(hist_df,mat_geo_trs)  
+hist_df%<>%
+  mutate(fullname=ifelse(is.na(fullname),variable,fullname))%>%
+  mutate(fullname=fct_relevel(fullname,c("Longitude","Latitude","Pairwise site distance",as.character(levels(as.factor(fullname)))[!as.character(levels(as.factor(fullname)))%in%c("Longitude","Latitude","Pairwise site distance")])))
+
+
+hist_df%<>%
+  left_join(combined[,c("Sample","BIOME_NAME","geo_region","eco_groups")])
+
+
+
+
+hist_df%<>%
+  mutate(BIOME_NAME=ifelse(fullname=="Pairwise site distance",NA,as.character(BIOME_NAME)),
+         geo_region=ifelse(fullname=="Pairwise site distance",NA,as.character(geo_region)),
+         eco_groups=ifelse(fullname=="Pairwise site distance",NA,as.character(eco_groups)))
+
+haha <- NULL
+for(i in 1:3){
+  # hist_df <- combined %>% 
+  #   dplyr::select(all_of(c("Sample","ph",var2use,"X","Y")))%>%
+  #   rename(Longitude=X,Latitude=Y)%>%
+  #   reshape2::melt(id.vars="Sample")
+  
+  
+  colorvar <- switch (i, 'eco_groups','BIOME_NAME','geo_region')
+  color_scheme <- switch(colorvar,
+                         'eco_groups'=color_eco_clust,
+                         'BIOME_NAME'=biomes_color,
+                         'geo_region'=color_geo_clust)
+  legend_name <- switch(colorvar,
+                        'eco_groups'="Ecological groups",
+                        'BIOME_NAME'="Biomes",
+                        'geo_region'="Regions")
+  
+  breaks2use <- levels(as.factor(hist_df[[colorvar]]))
+  
+  haha[[colorvar]] <-  ggplot(hist_df,aes(value,fill=.data[[colorvar]]))+
+    geom_histogram()+
+    facet_wrap(~fullname,scales = "free")+
+    theme_classic2()+
+    scale_fill_manual(values=color_scheme,name="",na.value = "grey47",breaks = breaks2use)+
+    theme(legend.position = "bottom")+
+    guides(fill=guide_legend(ncol=3))
+}
+```
+
+
+divpat
+```{r}
+patdiv <- NULL
+for(i in 1:3){
+  
+  colorvar <- switch (i, 'eco_groups','BIOME_NAME','geo_region')
+  color_scheme <- switch(colorvar,
+                         'eco_groups'=color_eco_clust,
+                         'BIOME_NAME'=biomes_color,
+                         'geo_region'=color_geo_clust)
+  legend_name <- switch(colorvar,
+                        'eco_groups'="Ecological groups",
+                        'BIOME_NAME'="Biomes",
+                        'geo_region'="Regions")
+  
+  dtmp <-  meco_16s_ns$sample_table%>%
+    left_join(combined)
+  
+  patdiv[[colorvar]] <- ggplot(dtmp,aes(x=X,y=nb_asvs))+
+    geom_point(aes(color=.data[[colorvar]]))+
+    theme_classic2()+
+    labs(x="Longitude",y="Richness")+
+    geom_smooth(method='lm',color="black")+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p"))) +
+    scale_color_manual(values = color_scheme,name=legend_name)+
+    theme(legend.position = "n")+
+    ggplot(dtmp,aes(x=Y,y=nb_asvs))+
+    geom_point(aes(color=.data[[colorvar]]))+
+    theme_classic2()+
+    labs(x="Latitude",y="")+
+    geom_smooth(method='lm',color="black")+
+    ggpmisc::stat_poly_eq(ggpmisc::use_label(c("adj.R2", "f", "p")))+
+    scale_color_manual(values = color_scheme,name=legend_name)+
+    theme(legend.position = "n")
+  
+}
+
+```
+
+
+assmelby
+```{r}
+layout <- "
+AB
+CC
+DD
+EE
+"
+
+for(i in 1:3){
+  
+  colorvar <- switch (i, 'eco_groups','BIOME_NAME','geo_region')
+  
+  fig1_ass <- wrap_plots(mappfig1[[colorvar]],
+                         pca_site_var$lt[[colorvar]],
+                         haha[[colorvar]],
+                         patdiv[[colorvar]],
+                         guide_area(),
+                         design = layout,
+                         heights = c(1.5,3,1,.5),guides="collect")
+  ggsave(paste0("Figures/clean_fig/fig1/assemb_",colorvar,".png"),fig1_ass,width = 7,height = 13)
+  
+}
+```
+
+
+## Fig2
+
+donuts plot without singletons fur 16s
+```{r}
+tmp16s <- clone(meco_16s_ns)
+tmp16s$sample_table %<>% mutate(dumb_group = "sample")
+tmp16s$otu_table %<>% filter(rowSums(.)>1)
+tmp16s$tidy_dataset()
+
+tmp16s$cal_abund()
+tmp16s1 <- trans_abund$new(tmp16s,taxrank = "Genus",ntaxa = 8,groupmean = "dumb_group")
+
+plot_data1 <- tmp16s1$data_abund
+use_taxanames <- tmp16s1$data_taxanames
+plot_data1$Taxonomy[!plot_data1$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+plot_data1 %<>% 
+  dplyr::group_by(!!!syms(c("Taxonomy","Sample"))) %>% 
+  dplyr::summarise(Abundance = sum(Abundance)) %>% 
+  as.data.frame(stringsAsFactors = FALSE)
+plot_data1$Taxonomy %<>% factor(., levels = c(use_taxanames[-9], "Others","unidentified"))
+plot_data1$label <- paste0(round(plot_data1$Abundance, 1),"%")
+
+donut_comp <- ggdonutchart(plot_data1,"Abundance",
+                           fill="Taxonomy",
+                           label = "label",
+                           color = "white",
+                           palette =  c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey"),
+                           guide = guide_legend(reverse = TRUE) )+
+  theme(legend.position = "right")+
+  guides(fill=guide_legend(title="Genus (476 identified):"))
+
+tmp16s2 <- trans_abund$new(tmp16s,taxrank = "Genus",ntaxa = 8)
+plot_data2 <- tmp16s2$data_abund
+plot_data2$Taxonomy[!plot_data2$Taxonomy %in% c(use_taxanames,"unidentified")] <- "Others"
+plot_data2$Taxonomy %<>% factor(., levels = rev(c(use_taxanames[-9], "Others","unidentified")))
+plot_data2%<>%
+  left_join(rename(combined,Sample_replace=Sample))%>%
+  arrange(BIOME_NAME,eco_groups,geo_region,Sample_replace)%>%
+  mutate(Sample_replace=fct_inorder(Sample_replace))
+
+bar_comp <- plot_data2%>%
+  ggplot(aes(x=Sample_replace,y=Abundance,fill=Taxonomy),color=NA)+
+  geom_bar(stat = "identity",width=1,position='fill')+
+  scale_fill_manual(values =  rev(c(colorRampPalette(brewer.pal(8, "Dark2"))(9),"lightgrey")),
+                    guide = guide_legend(reverse = TRUE) )+
+  scale_y_continuous(expand = c(0,0))+
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())+  guides(fill=guide_legend(title="Genus (476 identified):"))+
+  theme(legend.position = "none",
+        axis.title.x = element_blank())
+
+dfp3 <- combined%>%
+  arrange(BIOME_NAME,eco_groups,geo_region,Sample)%>%
+  mutate(Sample=as.factor(Sample))%>%
+  mutate(Sample=fct_inorder(Sample))
+
+p3 <- dfp3%>%
+  ggplot(aes(x=Sample,y=1,fill=BIOME_NAME))+
+    geom_tile()+
+  scale_fill_manual(values=biomes_color,name="Biomes")+
+  theme_void()
+p4 <- dfp3%>%
+  ggplot(aes(x=Sample,y=1,fill=eco_groups))+
+    geom_tile()+
+  scale_fill_manual(values=color_eco_clust,name="Ecological groups")+
+  theme_void()
+
+p5 <- dfp3%>%
+  ggplot(aes(x=Sample,y=1,fill=geo_region))+
+    geom_tile()+
+  scale_fill_manual(values=color_geo_clust,name="Regions")+
+  theme_void()
+
+comp <- donut_comp + (bar_comp/p3/p4/p5+plot_layout(heights = c(10,.5,.5,.5)))+plot_layout(guides = "collect")
+```
+
+Distribution and prev/relab
+
+```{r}
+tmp <- clone(meco_16s_ns)
+prev <- rowSums(tmp$otu_table>0)
+a <- prev%>%
+  as.data.frame()%>%
+  ggplot(aes(x=prev))+
+  geom_histogram(binwidth = 1,color='darkcyan',fill='darkcyan')+
+  theme_classic2()+
+  xlab("Cluster prevalence across samples (76 cluster with >80% prevalence)")+
+  coord_trans(y = "log1p")+
+    scale_y_continuous(expand = c(0,0),breaks = c(5,20,100,500,1000,2000,3000))+
+  scale_x_continuous(expand=c(0,0))
+
+fig_title <- 'Cluster prevalence across samples <span style="font-size:7pt">*(76 cluster with >80% prevalence)*</span> '
+
+a+
+  xlab(fig_title) +
+  theme(axis.title.x = ggtext::element_markdown())
+```
+
+```{r}
+dtmp <- clone(meco_16s_ns)
+orditmp <- ordinate(file2meco::meco2phyloseq(dtmp), "PCoA", "horn")
+
+expl1 <- orditmp$values$Relative_eig[1]
+expl2 <- orditmp$values$Relative_eig[2]
+expl3 <- orditmp$values$Relative_eig[3]
+
+dim1 <- orditmp$vectors[,1]
+dim2 <- orditmp$vectors[,2]
+dim3 <- orditmp$vectors[,3]
+Sample <- gsub("[A-Z]|-|(?=_).*","",names(orditmp$vectors[,1]),perl=T)
+df_ordihorn <- data.frame(dim1,
+                      dim2,
+                      dim3,
+                      Sample)
+df_ordihorn%<>%left_join(combined)
+
+orditmp <- ordinate(file2meco::meco2phyloseq(dtmp), "PCoA", "jaccard")
+
+expl1 <- orditmp$values$Relative_eig[1]
+expl2 <- orditmp$values$Relative_eig[2]
+expl3 <- orditmp$values$Relative_eig[3]
+
+dim1 <- orditmp$vectors[,1]
+dim2 <- orditmp$vectors[,2]
+dim3 <- orditmp$vectors[,3]
+Sample <- gsub("[A-Z]|-|(?=_).*","",names(orditmp$vectors[,1]),perl=T)
+df_ordijaccard <- data.frame(dim1,
+                      dim2,
+                      dim3,
+                      Sample)
+df_ordijaccard%<>%left_join(combined)
+
+pcoa_horn <- NULL
+pcoa_jaccard <- NULL
+for(i in 1:3){
+  
+  colorvar <- switch (i, 'eco_groups','BIOME_NAME','geo_region')
+  color_scheme <- switch(colorvar,
+                         'eco_groups'=color_eco_clust,
+                         'BIOME_NAME'=biomes_color,
+                         'geo_region'=color_geo_clust)
+  legend_name <- switch(colorvar,
+                        'eco_groups'="Ecological groups",
+                        'BIOME_NAME'="Biomes",
+                        'geo_region'="Regions")
+  
+pcoa_horn[[colorvar]] <- ggplot(df_ordihorn,aes(x=dim1,y=dim2,color=.data[[colorvar]]))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  # ggConvexHull::geom_convexhull(aes(fill = Biomes, color = Biomes),
+  #                               alpha=0.2)+
+  # geom_vline(xintercept=0,lty=2)+
+  # geom_hline(yintercept=0,lty=2)+
+  scale_color_manual(values=color_scheme,name=legend_name)
+
+
+pcoa_jaccard[[colorvar]] <- ggplot(df_ordijaccard,aes(x=dim1,y=dim2,color=.data[[colorvar]]))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  # ggConvexHull::geom_convexhull(aes(fill = .data[[colorvar]], color = .data[[colorvar]]),
+  #                               alpha=0.2)+
+  # geom_vline(xintercept=0,lty=2)+
+  # geom_hline(yintercept=0,lty=2)+
+  scale_color_manual(values=color_scheme,name=legend_name)
+  # scale_fill_manual(values=biomes_color,name="Biomes")
+}
+```
+
+
+infernal venns
+```{r}
+meco_16s_ns$sample_table%<>%
+  left_join(combined)
+rownames(meco_16s_ns$sample_table) <- meco_16s_ns$sample_table$sample_id
+meco_16s_ns$tidy_dataset()
+
+merged_16s_ps <- merge_samples(file2meco::meco2phyloseq(meco_16s_ns),"BIOME_NAME")
+
+Tundra  <-  colnames(merged_16s_ps@otu_table["Tundra", apply(merged_16s_ps@otu_table["Tundra",], MARGIN=2, function(x) any(x >0))])
+Bor  <-  colnames(merged_16s_ps@otu_table["Boreal Forests/Taiga", apply(merged_16s_ps@otu_table["Boreal Forests/Taiga",], MARGIN=2, function(x) any(x >0))])
+Temp_mixed  <-  colnames(merged_16s_ps@otu_table["Temperate Broadleaf & Mixed Forests", apply(merged_16s_ps@otu_table["Temperate Broadleaf & Mixed Forests",], MARGIN=2, function(x) any(x >0))])
+Temp_conif  <-  colnames(merged_16s_ps@otu_table["Temperate Conifer Forests", apply(merged_16s_ps@otu_table["Temperate Conifer Forests",], MARGIN=2, function(x) any(x >0))])
+
+
+
+
+x <- list(Tundra,Bor,Temp_mixed,Temp_conif)
+names(x) <- c("Tundra","Boreal Forests/Taiga","Temperate Broadleaf & Mixed Forests","Temperate Conifer Forests")
+venn <- ggVennDiagram::Venn(x)
+d <- ggVennDiagram::process_data(venn)
+d2 <- ggVennDiagram::process_data(venn)
+d$setEdge%<>%
+  left_join(d$setLabel[,c("name","id")])
+d$setEdge <- sf::st_as_sf(d$setEdge, coords = c("X","Y"))%>%
+  group_by(name)%>%
+  dplyr::summarize(do_union=FALSE) %>%  # do_union=FALSE doesn't work as well
+  st_cast("LINESTRING")
+
+d$setLabel <- sf::st_as_sf(d$setLabel, coords = c("X","Y"))
+d2$regionData <- st_polygonize(d$setEdge)
+d$regionLabel <- sf::st_as_sf(d$regionLabel , coords = c("X","Y"))
+col <- mo_col
+
+gvenn_16s <- ggplot() +
+  geom_sf(aes(fill = name), alpha = .2, data =
+             d2$regionData)+
+  geom_sf(aes(color = name), data = d$setEdge,lwd=1 )+
+  geom_sf_text(aes(label = name),data= d$setLabel,
+               size = 4)+
+  geom_sf_text(aes(label = count), data = d$regionLabel,
+               size = 5) +
+  scale_color_manual(values = biomes_color,name="Biomes") +
+  scale_fill_manual(values = biomes_color,name="Biomes") +
+  theme_void()
+gvenn_16s
+
+
+
+
+
+
+
+
+merged_16s_ps <- merge_samples(file2meco::meco2phyloseq(meco_16s_ns),"geo_region")
+
+NE_EU <-  colnames(merged_16s_ps@otu_table["NE Europe", apply(merged_16s_ps@otu_table["NE Europe",], MARGIN=2, function(x) any(x >0))])
+SW_EU  <-  colnames(merged_16s_ps@otu_table["SW Europe", apply(merged_16s_ps@otu_table["SW Europe",], MARGIN=2, function(x) any(x >0))])
+NE_AM  <-  colnames(merged_16s_ps@otu_table["NE America", apply(merged_16s_ps@otu_table["NE America",], MARGIN=2, function(x) any(x >0))])
+China  <-  colnames(merged_16s_ps@otu_table["China", apply(merged_16s_ps@otu_table["China",], MARGIN=2, function(x) any(x >0))])
+NW_AM  <-  colnames(merged_16s_ps@otu_table["NW America", apply(merged_16s_ps@otu_table["NW America",], MARGIN=2, function(x) any(x >0))])
+Azores  <-  colnames(merged_16s_ps@otu_table["Azores", apply(merged_16s_ps@otu_table["Azores",], MARGIN=2, function(x) any(x >0))])
+
+
+x <- list(NE_EU,SW_EU,NE_AM,China,NW_AM,Azores)
+names(x) <- c("NE Europe","SW Europe","NE America","China","NW America","Azores")
+venn <- ggVennDiagram::Venn(x)
+d <- ggVennDiagram::process_data(venn)
+d2 <- ggVennDiagram::process_data(venn)
+d$setEdge%<>%
+  left_join(d$setLabel[,c("name","id")])
+d$setEdge <- sf::st_as_sf(d$setEdge, coords = c("X","Y"))%>%
+  group_by(name)%>%
+  dplyr::summarize(do_union=FALSE) %>%  # do_union=FALSE doesn't work as well
+  st_cast("LINESTRING")
+
+d$setLabel <- sf::st_as_sf(d$setLabel, coords = c("X","Y"))
+d2$regionData <- st_polygonize(d$setEdge)
+d$regionLabel <- sf::st_as_sf(d$regionLabel , coords = c("X","Y"))
+
+gvenn_16s <- ggplot() +
+  geom_sf(aes(fill = name), alpha = .3, data =
+             d2$regionData)+
+  geom_sf(aes(color = name), data = d$setEdge,lwd=1)+
+  geom_sf_text(aes(label = name),data= d$setLabel,
+               size = 4)+
+  geom_sf_text(aes(label = count), data = d$regionLabel,
+               size = 5) +
+  scale_color_manual(values = color_geo_clust,name="Regions") +
+  scale_fill_manual(values = color_geo_clust,name="Regions") +
+  theme_void()
+gvenn_16s
+
+
+
+
+merged_16s_ps <- merge_samples(file2meco::meco2phyloseq(meco_16s_ns),"eco_groups")
+
+G1 <-  colnames(merged_16s_ps@otu_table["G1", apply(merged_16s_ps@otu_table["G1",], MARGIN=2, function(x) any(x >0))])
+G2  <-  colnames(merged_16s_ps@otu_table["G2", apply(merged_16s_ps@otu_table["G2",], MARGIN=2, function(x) any(x >0))])
+G3  <-  colnames(merged_16s_ps@otu_table["G3", apply(merged_16s_ps@otu_table["G3",], MARGIN=2, function(x) any(x >0))])
+G4  <-  colnames(merged_16s_ps@otu_table["G4", apply(merged_16s_ps@otu_table["G4",], MARGIN=2, function(x) any(x >0))])
+G5  <-  colnames(merged_16s_ps@otu_table["G5", apply(merged_16s_ps@otu_table["G5",], MARGIN=2, function(x) any(x >0))])
+G6  <-  colnames(merged_16s_ps@otu_table["G6", apply(merged_16s_ps@otu_table["G6",], MARGIN=2, function(x) any(x >0))])
+
+
+x <- list(G1,G2,G3,G4,G5,G6)
+names(x) <- c("G1","G2","G3","G4","G5","G6")
+venn <- ggVennDiagram::Venn(x)
+d <- ggVennDiagram::process_data(venn)
+d2 <- ggVennDiagram::process_data(venn)
+d$setEdge%<>%
+  left_join(d$setLabel[,c("name","id")])
+d$setEdge <- sf::st_as_sf(d$setEdge, coords = c("X","Y"))%>%
+  group_by(name)%>%
+  dplyr::summarize(do_union=FALSE) %>%  # do_union=FALSE doesn't work as well
+  st_cast("LINESTRING")
+
+d$setLabel <- sf::st_as_sf(d$setLabel, coords = c("X","Y"))
+d2$regionData <- st_polygonize(d$setEdge)
+d$regionLabel <- sf::st_as_sf(d$regionLabel , coords = c("X","Y"))
+
+gvenn_16s <- ggplot() +
+  geom_sf(aes(fill = name), alpha = .2, data =
+             d2$regionData)+
+  geom_sf(aes(color = name), data = d$setEdge,lwd=1 )+
+  geom_sf_text(aes(label = name),data= d$setLabel,
+               size = 4)+
+  geom_sf_text(aes(label = count), data = d$regionLabel,
+               size = 5) +
+  scale_color_manual(values = color_eco_clust,name="Ecological groups") +
+  scale_fill_manual(values = color_eco_clust,name="Ecological groups") +
+  theme_void()
+gvenn_16s
+```
+
+
+
+infernal upsets
+```{r}
+data_tmp <- clone(meco_16s_ns)
+data_tmp$sample_table%<>%
+  mutate(Sample=gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+rownames(data_tmp$sample_table) <- data_tmp$sample_table$sample_id
+data_tmp$tidy_dataset()
+data_tmp$sample_table%<>%
+  mutate(biomes=gsub("&","-",BIOME_NAME))
+merged_tmp <-  data_tmp$merge_samples(use_group = "biomes")
+t1 <- trans_venn$new(dataset = merged_tmp)
+
+
+self <- t1
+colnumber <- self$colnumber
+ratio <- self$ratio
+res_names <- self$res_names
+switch_num <- colnumber - 1
+summary_table <- self$data_summary
+name_joint <- self$name_joint
+samplesum <- self$data_samplesum
+
+sample_levels <- res_names %>% rev
+plot_data <- summary_table %>% rownames_to_column %>% .[order(.$Counts, 
+                                                              decreasing = TRUE), ]
+
+
+tot_counts <- plot_data$Counts%>%sum
+tot_ab <- plot_data$Abundance%>%sum
+most_ab <- max(plot_data$Abundance)
+plot_data%<>%filter(Counts!=0)
+
+plot_data %<>%
+  mutate(rowname=factor(rowname,levels=rowname))
+
+g1 <- ggplot(plot_data, aes(x = rowname, y = Counts)) + 
+  theme_classic() + geom_col(color = "cadetblue4", fill = "cadetblue4",width=.5) + 
+  ylab("Intersection size") + theme(axis.title.x = element_blank(), 
+                                    axis.text.x = element_blank(),
+                                    axis.ticks.x = element_blank()) + 
+  theme(axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 10))
+
+matrix_data <- matrix(nrow = colnumber, ncol = nrow(plot_data)) %>% 
+  as.data.frame
+rownames(matrix_data) <- sample_levels
+colnames(matrix_data) <- plot_data[, 1]
+for (i in colnames(matrix_data)) {
+  tmp <- strsplit(i, name_joint, fixed = TRUE) %>% unlist
+  for (j in rownames(matrix_data)) {
+    if (j %in% tmp) {
+      matrix_data[j, i] <- 1
+    }
+  }
+}
+sample_long <- matrix_data %>% rownames_to_column %>% reshape2::melt(., 
+                                                                     id.vars = "rowname")
+sample_long$variable %<>% factor(., levels = levels(plot_data[, 
+                                                              1]))
+sample_long$rowname %<>% factor(levels = sample_levels)
+sample_ture <- sample_long[!is.na(sample_long$value), ]
+sample_all <- sample_long
+sample_all$value <- 1
+g2 <- ggplot(sample_long, aes(x = variable, y = rowname))
+for (i in seq_len(length(unique(sample_ture$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="Tundra" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#3CAEA3", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="Temperate Conifer Forests" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#173F5F", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="Boreal Forests/Taiga"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#F6D55C", 
+                         colour =  NA,alpha=.02)
+  }else{
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#ED553B", 
+                         colour =  NA,alpha=.02)
+  }
+}
+g2 <- g2 + geom_point(aes(x = variable, y = rowname), data = sample_all, 
+                      size = 3, color = "white", inherit.aes = FALSE) + 
+  geom_point(aes(x = variable, y = rowname), data = sample_ture, 
+             size = 3, color = "black", 
+             inherit.aes = FALSE) + theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), 
+        axis.ticks = element_blank()) + theme(axis.text = element_text(size = 10)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  scale_y_discrete(position = 'right')
+line_data <- matrix_data
+line_data[] <- lapply(line_data, function(x) {
+  x <- 1:length(x)
+  x
+})
+line_data[is.na(matrix_data)] <- NA
+line_data2 <- data.frame(y = apply(line_data, 2, min, na.rm = TRUE), 
+                         yend = apply(line_data, 2, max, na.rm = TRUE), x = 1:ncol(line_data), 
+                         xend = 1:ncol(line_data))
+g2 <- g2 + geom_segment(aes(x = x, y = y, xend = xend, yend = yend), 
+                        data = line_data2,
+                        color="black")
+
+g3_data <- data.frame(number = samplesum, rowname = names(samplesum))
+g3_data$rowname %<>% factor(levels = sample_levels)
+g3_data <- combined%>%
+  group_by(BIOME_NAME)%>%
+  summarise(n=n())%>%
+  mutate(rowname=gsub("&","-",BIOME_NAME))%>%
+  left_join(g3_data)%>%
+  mutate(rowname=fct_relevel(rowname,levels(sample_long$rowname)))
+g3 <- ggplot(g3_data, aes(x = number, y = rowname))
+for (i in seq_len(length(unique(g3_data$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="Tundra" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#3CAEA3", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="Temperate Conifer Forests" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#173F5F", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="Boreal Forests/Taiga"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#F6D55C", 
+                         colour =  NA,alpha=.3)
+  }else{
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#ED553B", 
+                         colour =  NA,alpha=.3)
+  }
+}
+g3 <-g3 +
+  geom_col(fill =  "cadetblue4",width = .6) + 
+  theme_bw() +
+  theme(legend.position = "none") +
+  scale_x_reverse(limits=c(max(g3_data$number)*1.1,0),expand=c(0,0)) +  
+  theme(axis.title = element_blank(), axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank()) + theme(axis.text = element_text(size = 8)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  annotate(geom = "text",x=g3_data$number+(.2*min(g3_data$number)),y=g3_data$rowname,label=g3_data$n)
+
+
+zz <- data_tmp$otu_table%>%mutate(otus=rownames(.))%>%reshape2::melt()%>%filter(value!=0)%>%group_by(variable)%>%mutate(relab_sample=(value/sum(value))*100)
+
+list_relab <- NULL
+for(j in 1:ncol(t1$data_details)){
+  
+  tmp_relab <- data_tmp$otu_table%>%
+    mutate(otus=rownames(.))%>%
+    reshape2::melt(id.var="otus")%>%
+    mutate(combination=colnames(t1$data_details)[j])%>%
+    mutate(combination_status=ifelse(otus%in%t1$data_details[,j],"isin","notin"))
+  
+  list_relab  <- rbind(list_relab,tmp_relab)
+}
+
+list_relab%<>%
+  left_join(zz)%>%
+  filter(value!=0)
+
+plot_data %<>% mutate(cumab=cumsum(Abundance))
+plot_data %<>% mutate(intersect=rowname)
+plot_data %<>% mutate(cumrelab=(cumab/most_ab)*100)
+plot_data %<>% mutate(relab=(Abundance/tot_ab)*100)
+bupset <- ggplot(plot_data,aes(x=intersect,y=relab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+cumsumupset <- ggplot(plot_data,aes(x=intersect,y=cumrelab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Cumulative dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+bxupset <- list_relab %>%
+  filter(combination_status!="notin")%>%
+  filter(combination%in%plot_data$rowname)%>%
+  mutate(combination=fct_relevel(combination,levels(plot_data$rowname)))%>%
+  ggplot(aes(x=combination,y=relab_sample))+
+  geom_boxplot(fill="cadetblue4")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_log10(breaks = trans_breaks(identity, identity, n = 4))+
+  ylab("Relative abundance (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+
+layout <- "
+#BBB
+ACCC
+#DDD
+"
+up2save <- g3+g1+g2+bxupset+plot_layout(design = layout)
+up2save2 <- g3+g1+g2+cumsumupset+plot_layout(design = layout)
+up2save3 <- g3+g1+g2+bupset+plot_layout(design = layout)
+
+
+
+data_tmp <- clone(meco_16s_ns)
+data_tmp$sample_table%<>%
+  mutate(Sample=gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+rownames(data_tmp$sample_table) <- data_tmp$sample_table$sample_id
+data_tmp$tidy_dataset()
+
+merged_tmp <-  data_tmp$merge_samples(use_group = "eco_groups")
+t1 <- trans_venn$new(dataset = merged_tmp)
+
+
+self <- t1
+colnumber <- self$colnumber
+ratio <- self$ratio
+res_names <- self$res_names
+switch_num <- colnumber - 1
+summary_table <- self$data_summary
+name_joint <- self$name_joint
+samplesum <- self$data_samplesum
+
+sample_levels <- res_names %>% rev
+plot_data <- summary_table %>% rownames_to_column %>% .[order(.$Counts, 
+                                                              decreasing = TRUE), ]
+
+
+tot_counts <- plot_data$Counts%>%sum
+tot_ab <- plot_data$Abundance%>%sum
+most_ab <- max(plot_data$Abundance)
+plot_data%<>%filter(Counts!=0)
+
+plot_data %<>%
+  mutate(rowname=factor(rowname,levels=rowname))
+
+g1 <- ggplot(plot_data, aes(x = rowname, y = Counts)) + 
+  theme_classic() + geom_col(color = "cadetblue4", fill = "cadetblue4",width=.5) + 
+  ylab("Intersection size") + theme(axis.title.x = element_blank(), 
+                                    axis.text.x = element_blank(),
+                                    axis.ticks.x = element_blank()) + 
+  theme(axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 10))
+
+matrix_data <- matrix(nrow = colnumber, ncol = nrow(plot_data)) %>% 
+  as.data.frame
+rownames(matrix_data) <- sample_levels
+colnames(matrix_data) <- plot_data[, 1]
+for (i in colnames(matrix_data)) {
+  tmp <- strsplit(i, name_joint, fixed = TRUE) %>% unlist
+  for (j in rownames(matrix_data)) {
+    if (j %in% tmp) {
+      matrix_data[j, i] <- 1
+    }
+  }
+}
+sample_long <- matrix_data %>% rownames_to_column %>% reshape2::melt(., 
+                                                                     id.vars = "rowname")
+sample_long$variable %<>% factor(., levels = levels(plot_data[, 
+                                                              1]))
+sample_long$rowname %<>% factor(levels = sample_levels)
+sample_ture <- sample_long[!is.na(sample_long$value), ]
+sample_all <- sample_long
+sample_all$value <- 1
+g2 <- ggplot(sample_long, aes(x = variable, y = rowname))
+for (i in seq_len(length(unique(sample_ture$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="G1" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#FF7856", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="G2" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#FFE752", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="G3"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#2DB277", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="G4"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#29B6E9", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="G5"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#EE2BA8", 
+                         colour =  NA,alpha=.02)
+  }else{
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#5336E0", 
+                         colour =  NA,alpha=.02)
+  }
+}
+g2 <- g2 + geom_point(aes(x = variable, y = rowname), data = sample_all, 
+                      size = 3, color = "white", inherit.aes = FALSE) + 
+  geom_point(aes(x = variable, y = rowname), data = sample_ture, 
+             size = 3, color = "black", 
+             inherit.aes = FALSE) + theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), 
+        axis.ticks = element_blank()) + theme(axis.text = element_text(size = 10)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  scale_y_discrete(position = 'right')
+line_data <- matrix_data
+line_data[] <- lapply(line_data, function(x) {
+  x <- 1:length(x)
+  x
+})
+line_data[is.na(matrix_data)] <- NA
+line_data2 <- data.frame(y = apply(line_data, 2, min, na.rm = TRUE), 
+                         yend = apply(line_data, 2, max, na.rm = TRUE), x = 1:ncol(line_data), 
+                         xend = 1:ncol(line_data))
+g2 <- g2 + geom_segment(aes(x = x, y = y, xend = xend, yend = yend), 
+                        data = line_data2,
+                        color="black")
+
+g3_data <- data.frame(number = samplesum, rowname = names(samplesum))
+g3_data$rowname %<>% factor(levels = sample_levels)
+g3_data <- combined%>%
+  group_by(eco_groups)%>%
+  summarise(n=n())%>%
+  rename(rowname=eco_groups)%>%
+  left_join(g3_data)%>%
+  mutate(rowname=fct_relevel(rowname,levels(sample_long$rowname)))
+g3 <- ggplot(g3_data, aes(x = number, y = rowname))
+for (i in seq_len(length(unique(sample_ture$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="G1" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#FF7856", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="G2" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#FFE752", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="G3"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#2DB277", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="G4"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#29B6E9", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="G5"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#EE2BA8", 
+                         colour =  NA,alpha=.3)
+  }else{
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#5336E0", 
+                         colour =  NA,alpha=.3)
+  }
+}
+g3 <-g3 +
+  geom_col(fill =  "cadetblue4",width = .6) + 
+  theme_bw() +
+  theme(legend.position = "none") +
+  scale_x_reverse(limits=c(max(g3_data$number)*1.1,0),expand=c(0,0)) +  
+  theme(axis.title = element_blank(), axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank()) + theme(axis.text = element_text(size = 8)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  annotate(geom = "text",x=g3_data$number+(.2*min(g3_data$number)),y=g3_data$rowname,label=g3_data$n)
+
+
+zz <- data_tmp$otu_table%>%mutate(otus=rownames(.))%>%reshape2::melt()%>%filter(value!=0)%>%group_by(variable)%>%mutate(relab_sample=(value/sum(value))*100)
+
+list_relab <- NULL
+for(j in 1:ncol(t1$data_details)){
+  
+  tmp_relab <- data_tmp$otu_table%>%
+    mutate(otus=rownames(.))%>%
+    reshape2::melt(id.var="otus")%>%
+    mutate(combination=colnames(t1$data_details)[j])%>%
+    mutate(combination_status=ifelse(otus%in%t1$data_details[,j],"isin","notin"))
+  
+  list_relab  <- rbind(list_relab,tmp_relab)
+}
+
+list_relab%<>%
+  left_join(zz)%>%
+  filter(value!=0)
+
+plot_data %<>% mutate(cumab=cumsum(Abundance))
+plot_data %<>% mutate(intersect=rowname)
+plot_data %<>% mutate(cumrelab=(cumab/most_ab)*100)
+plot_data %<>% mutate(relab=(Abundance/tot_ab)*100)
+bupset <- ggplot(plot_data,aes(x=intersect,y=relab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+cumsumupset <- ggplot(plot_data,aes(x=intersect,y=cumrelab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Cumulative dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+bxupset <- list_relab %>%
+  filter(combination_status!="notin")%>%
+  filter(combination%in%plot_data$rowname)%>%
+  mutate(combination=fct_relevel(combination,levels(plot_data$rowname)))%>%
+  ggplot(aes(x=combination,y=relab_sample))+
+  geom_boxplot(fill="cadetblue4")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_log10(breaks = trans_breaks(identity, identity, n = 4))+
+  ylab("Relative abundance (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+
+layout <- "
+#BBB
+ACCC
+#DDD
+"
+up2save1 <- g3+g1+g2+bxupset+plot_layout(design = layout)
+up2save21 <- g3+g1+g2+cumsumupset+plot_layout(design = layout)
+up2save31 <- g3+g1+g2+bupset+plot_layout(design = layout)
+
+
+
+
+
+
+
+
+
+
+
+
+data_tmp <- clone(meco_16s_ns)
+data_tmp$sample_table%<>%
+  mutate(Sample=gsub("[A-Z]|-|(?=_).*","",sample_id,perl = T))
+rownames(data_tmp$sample_table) <- data_tmp$sample_table$sample_id
+data_tmp$tidy_dataset()
+
+merged_tmp <-  data_tmp$merge_samples(use_group = "geo_region")
+t1 <- trans_venn$new(dataset = merged_tmp)
+
+
+self <- t1
+colnumber <- self$colnumber
+ratio <- self$ratio
+res_names <- self$res_names
+switch_num <- colnumber - 1
+summary_table <- self$data_summary
+name_joint <- self$name_joint
+samplesum <- self$data_samplesum
+
+sample_levels <- res_names %>% rev
+plot_data <- summary_table %>% rownames_to_column %>% .[order(.$Counts, 
+                                                              decreasing = TRUE), ]
+
+
+tot_counts <- plot_data$Counts%>%sum
+tot_ab <- plot_data$Abundance%>%sum
+most_ab <- max(plot_data$Abundance)
+plot_data%<>%filter(Counts!=0)
+
+plot_data %<>%
+  mutate(rowname=factor(rowname,levels=rowname))
+
+g1 <- ggplot(plot_data, aes(x = rowname, y = Counts)) + 
+  theme_classic() + geom_col(color = "cadetblue4", fill = "cadetblue4",width=.5) + 
+  ylab("Intersection size") + theme(axis.title.x = element_blank(), 
+                                    axis.text.x = element_blank(),
+                                    axis.ticks.x = element_blank()) + 
+  theme(axis.text = element_text(size = 8), 
+        axis.title = element_text(size = 10))
+
+matrix_data <- matrix(nrow = colnumber, ncol = nrow(plot_data)) %>% 
+  as.data.frame
+rownames(matrix_data) <- sample_levels
+colnames(matrix_data) <- plot_data[, 1]
+for (i in colnames(matrix_data)) {
+  tmp <- strsplit(i, name_joint, fixed = TRUE) %>% unlist
+  for (j in rownames(matrix_data)) {
+    if (j %in% tmp) {
+      matrix_data[j, i] <- 1
+    }
+  }
+}
+sample_long <- matrix_data %>% rownames_to_column %>% reshape2::melt(., 
+                                                                     id.vars = "rowname")
+sample_long$variable %<>% factor(., levels = levels(plot_data[, 
+                                                              1]))
+sample_long$rowname %<>% factor(levels = sample_levels)
+sample_ture <- sample_long[!is.na(sample_long$value), ]
+sample_all <- sample_long
+sample_all$value <- 1
+g2 <- ggplot(sample_long, aes(x = variable, y = rowname))
+for (i in seq_len(length(unique(sample_ture$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="NE Europe" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#bf6a63", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="SW Europe" ){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#b39149", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="NE America"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#7D3C01", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="China"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#54b0ab", 
+                         colour =  NA,alpha=.02)
+  }else if(levels(sample_ture$rowname)[i]=="NW America"){
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "cornflowerblue", 
+                         colour =  NA,alpha=.02)
+  }else{
+    g2 <- g2 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "darkorange", 
+                         colour =  NA,alpha=.02)
+  }
+}
+g2 <- g2 + geom_point(aes(x = variable, y = rowname), data = sample_all, 
+                      size = 3, color = "white", inherit.aes = FALSE) + 
+  geom_point(aes(x = variable, y = rowname), data = sample_ture, 
+             size = 3, color = "black", 
+             inherit.aes = FALSE) + theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), 
+        axis.ticks = element_blank()) + theme(axis.text = element_text(size = 10)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  scale_y_discrete(position = 'right')
+line_data <- matrix_data
+line_data[] <- lapply(line_data, function(x) {
+  x <- 1:length(x)
+  x
+})
+line_data[is.na(matrix_data)] <- NA
+line_data2 <- data.frame(y = apply(line_data, 2, min, na.rm = TRUE), 
+                         yend = apply(line_data, 2, max, na.rm = TRUE), x = 1:ncol(line_data), 
+                         xend = 1:ncol(line_data))
+g2 <- g2 + geom_segment(aes(x = x, y = y, xend = xend, yend = yend), 
+                        data = line_data2,
+                        color="black")
+
+g3_data <- data.frame(number = samplesum, rowname = names(samplesum))
+g3_data$rowname %<>% factor(levels = sample_levels)
+g3_data <- combined%>%
+  group_by(geo_region)%>%
+  summarise(n=n())%>%
+  rename(rowname=geo_region)%>%
+  left_join(g3_data)%>%
+  mutate(rowname=fct_relevel(rowname,levels(sample_long$rowname)))
+g3 <- ggplot(g3_data, aes(x = number, y = rowname))
+for (i in seq_len(length(unique(sample_ture$rowname)))) {
+  if (levels(sample_ture$rowname)[i]=="NE Europe" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#bf6a63", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="SW Europe" ){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#b39149", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="NE America"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#7D3C01", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="China"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "#54b0ab", 
+                         colour =  NA,alpha=.3)
+  }else if(levels(sample_ture$rowname)[i]=="NW America"){
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "cornflowerblue", 
+                         colour =  NA,alpha=.3)
+  }else{
+    g3 <- g3 + geom_rect(ymin = i - 0.5, ymax = i + 
+                           0.5, xmin = -Inf, xmax = Inf, fill = "darkorange", 
+                         colour =  NA,alpha=.3)
+  }
+}
+g3 <-g3 +
+  geom_col(fill =  "cadetblue4",width = .6) + 
+  theme_bw() +
+  theme(legend.position = "none") +
+  scale_x_reverse(limits=c(max(g3_data$number)*1.1,0),expand=c(0,0)) +  
+  theme(axis.title = element_blank(), axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank()) + theme(axis.text = element_text(size = 8)) + 
+  theme(panel.border = element_blank()) + theme(panel.grid = element_blank())+
+  annotate(geom = "text",x=g3_data$number+(.2*min(g3_data$number)),y=g3_data$rowname,label=g3_data$n)
+
+
+zz <- data_tmp$otu_table%>%mutate(otus=rownames(.))%>%reshape2::melt()%>%filter(value!=0)%>%group_by(variable)%>%mutate(relab_sample=(value/sum(value))*100)
+
+list_relab <- NULL
+for(j in 1:ncol(t1$data_details)){
+  
+  tmp_relab <- data_tmp$otu_table%>%
+    mutate(otus=rownames(.))%>%
+    reshape2::melt(id.var="otus")%>%
+    mutate(combination=colnames(t1$data_details)[j])%>%
+    mutate(combination_status=ifelse(otus%in%t1$data_details[,j],"isin","notin"))
+  
+  list_relab  <- rbind(list_relab,tmp_relab)
+}
+
+list_relab%<>%
+  left_join(zz)%>%
+  filter(value!=0)
+
+plot_data %<>% mutate(cumab=cumsum(Abundance))
+plot_data %<>% mutate(intersect=rowname)
+plot_data %<>% mutate(cumrelab=(cumab/most_ab)*100)
+plot_data %<>% mutate(relab=(Abundance/tot_ab)*100)
+bupset <- ggplot(plot_data,aes(x=intersect,y=relab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+cumsumupset <- ggplot(plot_data,aes(x=intersect,y=cumrelab))+
+  geom_bar(stat='identity',width = .5,fill="cadetblue4",position = "dodge")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(trans = "pseudo_log")+
+  ylab("Cumulative dataset wide reads (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+bxupset <- list_relab %>%
+  filter(combination_status!="notin")%>%
+  filter(combination%in%plot_data$rowname)%>%
+  mutate(combination=fct_relevel(combination,levels(plot_data$rowname)))%>%
+  ggplot(aes(x=combination,y=relab_sample))+
+  geom_boxplot(fill="cadetblue4")+
+  theme_classic2()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_log10(breaks = trans_breaks(identity, identity, n = 4))+
+  ylab("Relative abundance (%)")+ 
+  theme(axis.text = element_text(size = 8)) 
+
+
+layout <- "
+#BBB
+ACCC
+#DDD
+"
+up2save12 <- g3+g1+g2+bxupset+plot_layout(design = layout)
+up2save22 <- g3+g1+g2+cumsumupset+plot_layout(design = layout)
+up2save32 <- g3+g1+g2+bupset+plot_layout(design = layout)
+```
+
+
+dbrdaz
+```{r}
+dbrda_site_biplot_mems <- NULL
+
+var_lt <- colnames(combined)[which(grepl("lt",colnames(combined)))]
+var_st <- colnames(combined)[which(grepl("st",colnames(combined)))]
+var_interest <- c("pr","swe","tmmn","vpd","gpp")
+
+for(i in c("_lt","_st")){
+  for(usemem in c("nomems","withmems")){
+      
+  for(j in c("filt","nonfilt")){
+    
+  var2use <- get(paste0("var",i))
+  var2use <- var2use[which(gsub(i,"",var2use)%in%var_interest)]
+  if(usemem=="nomems"){
+    var_tmp <-  c("ph",var2use,"X","Y") 
+    combined_tmp <- combined
+  }else{
+    mems_df <- mems[,test$names[which(test$adj.pvalue<0.05)]]
+    var_tmp <- c(names(mems_df),"ph",var2use)
+    mems_df$Sample <- combined$Sample
+    combined_tmp <- combined %>% 
+      left_join(mems_df)
+  }
+  
+
+    if(j=="filt"){
+      com_tmp <- get("meco_16s_relabfiltered")
+    }else{
+      com_tmp <- get("meco_16s_ns")
+    }
+    p_title <- paste0("dbRDA ",ifelse(i=="_lt","long term ","short term "),usemem, ifelse(j=="filt", " filtered"," non filtered"))
+    
+    combined_tmp <- data.frame(nb_reads=colSums(com_tmp$otu_table))%>%
+      mutate(Sample=gsub("[A-Z]|-|(?=_).*","",rownames(.),perl = T))%>%
+      left_join(combined_tmp)
+    
+    formula_tmp <- paste0("labdsv::hellinger(t(com_tmp$otu_table))~Condition(nb_reads)+",paste0(var_tmp, collapse = "+"))
+    dbrda_tmp <- dbrda(formula=formula(formula_tmp),data=combined_tmp, distance="horn") # full model with morisita horn distance based on hellinger transformed data
+    
+    #get eigen values of axes
+    eig <- c(dbrda_tmp$CCA$eig)
+    eig1 <- round((eig[1]/sum(eig))*100,digits = 2) # % of explained inertia of the first axis
+    eig2 <- round((eig[2]/sum(eig))*100,digits = 2) # % of explained inertia of the second axis
+    
+    fort_rda_tmp <- fortify(dbrda_tmp) # transform dbrda results in a ggplot2 usable format
+    vars <- c("dbRDA1","dbRDA2") # we will plot in the first two dimensions
+    want <- fort_rda_tmp[["score"]] == "biplot" # get variables scores (arrows)
+    mul <- arrowMul(fort_rda_tmp[want, vars, drop = FALSE],
+                    fort_rda_tmp[!want, vars, drop = FALSE]) # get the scaling factor to scale these scores for plotting as in ggvegan
+    fort_rda_tmp[want, vars] <- mul * fort_rda_tmp[want, vars] # scale the scores 
+    
+    fort_rda_tmp%<>%
+      mutate(label=gsub(i,"",label))%>%
+      left_join(rename(names_df_clean,label=Var2))%>%
+      mutate(midname=ifelse(is.na(midname),label,midname))
+    
+    for(var2col in 1:3){
+      colorvar <- switch (var2col, 'eco_groups','BIOME_NAME','geo_region')
+      color_scheme <- switch(colorvar,
+                             'eco_groups'=color_eco_clust,
+                             'BIOME_NAME'=biomes_color,
+                             'geo_region'=color_geo_clust)
+      legend_name <- switch(colorvar,
+                            'eco_groups'="Ecological groups",
+                            'BIOME_NAME'="Biomes",
+                            'geo_region'="Regions")
+      
+      
+      
+      
+    dbrda_site_biplot_mems[[i]][[usemem]][[j]][[colorvar]] <- ggplot(fort_rda_tmp, aes(x = dbRDA1, y = dbRDA2)) +
+      geom_point(data = cbind(subset(fort_rda_tmp, score == "sites"), # add points (sites) corresponding to samples
+                              biomes=combined[[colorvar]]), 
+                 aes(color = biomes), 
+                 size = 4) +
+      scale_color_manual(values = color_scheme,name=legend_name)+
+      geom_segment(data = subset(fort_rda_tmp, score == "biplot"), # add arrows for variables
+                   aes(x = 0, y = 0, xend=dbRDA1, yend=dbRDA2),
+                   lineend = "round", 
+                   linejoin = "round",
+                   linewidth = .75, 
+                   arrow = arrow(length = unit(0.2, "inches")),
+                   colour = "black" ) +
+      coord_fixed()+ # fix proportion between axis units
+      geom_text(data = fort_rda_tmp[want, , drop = FALSE ], # add variable names at the end of arrows
+                aes(x = dbRDA1*1.2, # nudge a bit the coordinates so that they're not on the arrows
+                    y = dbRDA2*1.2,
+                    label = midname))+
+      theme_classic()+
+      xlab(paste0("dbRDA1 (",eig1,"%)"))+
+      ylab(paste0("dbRDA2 (",eig2,"%)"))+
+      guides(fill="none")  +
+      geom_hline(yintercept=0,linetype = "dashed")+
+      geom_vline(xintercept=0,linetype = "dashed")+
+      ggtitle(formula_tmp)+
+      theme(plot.title = element_text(face="bold"))+
+      coord_fixed()+
+      ggtitle(paste0(p_title," | contsrained: ", round(dbrda_tmp$CCA$tot.chi/dbrda_tmp$tot.chi,digits = 2)))
+    
+    
+    ggsave(paste0("Figures/dbrda/dbrda_",i,"_",usemem,"_",j,"_",colorvar,".png"),dbrda_site_biplot_mems[[i]][[usemem]][[j]][[colorvar]])
+      }
+}
+  }
+}
+```
+
+brutal network 
+
+```{r}
+library(network)
+library(intergraph)
+library(ggplot2)
+library(GGally)
+
+data_net <- clone(meco_16s_ns)
+# data_net$otu_table <- data_net$otu_table[sample(1:nrow(data_net$otu_table),10000,replace = F),]
+data_net$tidy_dataset()
+net2 <- trans_network$new(dataset = data_net,nThreads = 8)
+
+net2$cal_network(network_method = "SpiecEasi", SpiecEasi_method = "mb")
+yup <- intergraph::asNetwork(net2$res_network)
+yup %v% "ubiquists" = ifelse(network.vertex.names(yup) %in% rownames(ubiquists), "yap", "nope")
+yup %v% "color" = ifelse(yup %v% "ubiquists" == "yap","darkorange","cornflowerblue")
+hist(get.edge.attribute(yup,"weight"),breaks = 30)
+set.edge.attribute(yup, "alpha", ifelse(yup %e% "weight" > 0.4, 1,0))
+xeuh <-  ggnet2(yup,color="color",mode="kamadakawai",edge.alpha = get.edge.attribute(yup,"alpha"),size=2,alpha=.3)
+xeuh
+
+
+
+tmp_net_data <- meco_16s_ns$otu_table%>%
+  t()
+tmp_net_data <- tmp_net_data+1 #pseudo count
+tmp_net_data_clrd <- SpiecEasi::clr(tmp_net_data) #normalization
+```
+
+```{r}
+  devtools::install_github("GraceYoon/SPRING")
+
+
+spring_est <- SPRING::SPRING(t(meco_16s_ns$otu_table), 
+                     Rmethod = "approx", 
+                     thresh = 0.05,
+                     lambdaseq = "data-specific")
+```
+
+
+## Fig3
+
+```{r}
+ubiquists <- meco_16s_ns$otu_table[rowSums(meco_16s_ns$otu_table>0)>160,]
+full_asvs <- meco_16s_ns$otu_table
+full_asvs%<>%
+  mutate(across(.cols=1:199,.fns=~(.x/sum(.))*100))
+mean_relab_ubi <- full_asvs%>%
+  slice(which(rowSums(meco_16s_ns$otu_table>0)>160))%>%
+  mutate(across(.cols=1:199,.fns=~ifelse(.x==0,NA,.x)))%>%
+  mutate(mean_relab=rowMeans(.,na.rm=T))
+
+order_alpha <- gsub("[A-Z]|-|(?=_).*","",names(sort(colSums(meco_16s_ns$otu_table>0),decreasing = T)),perl = T)
+order_prev <- names(sort(rowSums(meco_16s_ns$otu_table>0),decreasing = T))[1:76]
+dtmp <- mean_relab_ubi%>%
+  mutate(cluster=rownames(.))%>%
+  reshape2::melt(id.vars = c("mean_relab","cluster"))%>% 
+  mutate(cluster=fct_relevel(cluster,order_prev))
+
+dist.mat<-vegdist(t(ubiquists),method="jaccard")
+clust.res<-hclust(dist.mat)
+
+xx <-ubiquists%>%
+  mutate(cluster=rownames(.))%>%
+  reshape2::melt()%>%
+  mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl = T))%>%
+  mutate(pa=ifelse(value>0,"Present","Absent"))%>%
+  mutate(cluster=fct_relevel(cluster,order_prev))%>%
+  left_join(rename(combined,variable=Sample))%>%
+  mutate(variable=fct_relevel(variable,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))
+
+hmapubi <- xx%>%
+  ggplot(aes(x=variable,y=cluster,fill=pa))+
+  geom_tile()+
+  scale_fill_manual(values=c("#F3E8C8","#293250"),name="ASVs")
+
+# 
+# trans_log1prev <- trans_new(
+#   name      = "trans_log1prev",
+#   transform = log1p
+# )
+
+dtmp%<>%
+  filter(!is.na(value))
+dtmp%<>%
+    group_by(cluster) %>%
+    # Use approxfun to interpolate the density back to
+    # the original points
+    mutate(dens = approxfun(density(value))(value),na.rm=T)%>%
+  mutate(dens=scale(dens))
+
+relabubi <- ggplot()+
+  geom_point(dtmp,mapping=aes(x=value,y=cluster,color=dens),alpha=.3,size=1)+
+  geom_point(dtmp,mapping=aes(x=mean_relab,y=cluster),fill="darkorange",shape=23)+
+  coord_trans(x = "log1p")+
+    theme_classic2()+
+  scale_x_continuous(position = "top",breaks = c(0:5,10,15,20,25))+
+  scale_color_viridis_c(option="mako",name="Point density")+
+  theme(axis.text.y = element_text(size=6,face="bold"))
+  
+  
+biomeubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+    ggplot(aes(x=Sample,y=1,fill=BIOME_NAME))+
+    geom_tile()+
+    scale_fill_manual(values = biomes_color,name="Biomes")+
+    theme_void()
+  
+continent_ubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+    ggplot(aes(x=Sample,y=1,fill=continent))+
+    geom_tile()+
+    scale_fill_manual(values = country_color[c(1,8,14,4)],name="Continent")+
+    theme_void()
+  
+region_ubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+    ggplot(aes(x=Sample,y=1,fill=geo_region))+
+    geom_tile()+
+    scale_fill_manual(values = color_geo_clust,name="Continent")+
+    theme_void()
+  
+eco_ubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+    ggplot(aes(x=Sample,y=1,fill=eco_groups))+
+    geom_tile()+
+    scale_fill_manual(values = color_eco_clust,name="Ecological groups")+
+    theme_void()
+
+
+consecutive_id(combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%arrange(Sample)%>%select(Country))
+
+country_ubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+  arrange(Sample)%>%
+  mutate(country_series=consecutive_id(Country))%>%
+  mutate(rows_id=row_number())%>%
+  group_by(country_series)%>%
+  mutate(serie_size=n())%>%
+  ungroup()%>%
+  mutate(country_series = ifelse(duplicated(country_series), NA, country_series)) %>%
+  mutate(serie_size=ifelse(is.na(country_series),0,serie_size))%>%
+  mutate(serie_size_cumsum = cumsum(serie_size))%>%
+  mutate(serie_size_cumsum = ifelse(duplicated(serie_size_cumsum), NA, serie_size_cumsum)) 
+country_ubi$serie_size_cumsum[199] <- country_ubi$serie_size_cumsum[198]
+country_ubi$serie_size_cumsum[198] <- NA
+country_ubi%<>%
+  mutate(country_label=ifelse(is.na(serie_size_cumsum),NA,Country))
+pcubi <- country_ubi%>%
+ggplot() +
+geom_hline(yintercept = 1)+
+  geom_point(mapping=aes(x = serie_size_cumsum, y = 1)) +
+  geom_text(mapping=aes(x = serie_size_cumsum, y = 1, label = Country),hjust = -0.3, angle = 80,size=4) +
+  theme_void()+
+  scale_x_continuous(expand = c(0,0))
+
+ tax_ubi <- meco_16s_ns$tax_table[rowSums(meco_16s_ns$otu_table>0)>160,]
+taxplot_ubi <- tax_ubi%>%
+   mutate(cluster=rownames(.))%>%
+   mutate(Class=gsub("c__","",Class))%>%
+   mutate(Class=ifelse(Class=="","Unidentified",Class))%>%
+   mutate(Class=fct_relevel(Class,"Unidentified"))%>%
+   mutate(cluster=fct_relevel(cluster,order_prev))%>%
+   ggplot(aes(x=1,y=cluster,fill=Class))+
+   geom_tile()+
+   scale_fill_manual(values =c("lightgrey",colorRampPalette(RColorBrewer::brewer.pal(12,"Paired"))(11)))
+ 
+df_richness <- meco_16s_ns$otu_table%>%
+  mutate(cluster=rownames(.))%>%
+  reshape2::melt()%>%
+  mutate(variable=gsub("[A-Z]|-|(?=_).*","",variable,perl=T))%>%
+  group_by(variable)%>%
+  mutate(richness=sum(value!=0),
+         reads=sum(value))
+
+propubi_df <- xx%>%
+  left_join(df_richness)%>%
+  group_by(variable)%>%
+  mutate(n_ubi=sum(pa=='Present'),
+         prop_alpha_ubi=(n_ubi/richness)*100,
+         prop_reads_ubi=(sum(value)/reads)*100)%>%
+  rename(sample=variable)%>%
+  reshape2::melt(id.vars = "sample",measure.vars = c("prop_alpha_ubi","prop_reads_ubi","richness"))%>%
+  mutate(sample=fct_relevel(sample,levels(xx$variable)))%>%
+  distinct()%>%
+  ungroup()
+
+prop_plot_ubi <-  ggplot(NULL,aes(x=sample))+
+  geom_bar(data = filter(propubi_df,variable=="prop_reads_ubi"),aes(fill=variable,y=value),stat="identity",width = 1)+
+  geom_bar(data = filter(propubi_df,variable=="prop_alpha_ubi"),aes(fill=variable,y=value),stat="identity",width = 1)+
+  geom_line(data = filter(propubi_df,variable=="richness"),aes(y=value/25,group=1),color="black")+
+  geom_point(data = filter(propubi_df,variable=="richness"),aes(y=value/25),color="black")+
+  theme_classic2()+
+  scale_y_continuous(expand=c(0,0), sec.axis = sec_axis(~ (.)*25, name = "Total richness"))+
+  ylab("%")+
+  scale_fill_manual(values = c("#cf9829","#0d4c94"),
+                    labels = c('Reads','Richness'),
+                    name = "Relative to sample total:")+
+  theme(axis.ticks.x=element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+  
+prop_plot_ubi
+
+
+```
+
+
+```{r}
+p1 <- ((hmapubi+theme(axis.title = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank()))/biomeubi/continent_ubi+plot_layout(guides = "collect",heights = c(9,.5,.5)))
+
+p2 <- ((relabubi+
+  theme(axis.line.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank())+
+  xlab("Relative abundance (%)"))/
+  plot_spacer()/
+  plot_spacer()+
+  plot_layout(heights = c(9,.5,.5)))
+p2+p1+plot_layout(ncol = 2)
+
+
+layout <- "
+ABE
+#C#
+#D#
+"
+fig3 <- (relabubi+
+  theme(axis.title.y = element_blank(),)+
+  xlab("Relative abundance (%)"))+
+    (hmapubi+theme(axis.title = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank()))+
+       biomeubi+
+       continent_ubi+
+       (taxplot_ubi+theme_void())+
+       plot_layout(design = layout,guides = "collect",heights = c(9,.5,.5),widths = c(3,7.5,.5))
+
+
+```
+
+```{r}
+ggsave("Figures/clean_fig/fig3/fig3.png",fig3,width = 14,height = 10)
+```
+
+```{r}
+
+pcubi <- country_ubi%>%
+  ggplot() +
+  geom_hline(yintercept = 1)+
+  geom_point(mapping=aes(x = serie_size_cumsum, y = 1)) +
+  geom_text(mapping=aes(x = serie_size_cumsum, y = 1, label = Country),hjust = -0.3, angle = 80,size=3)+
+  # scale_x_continuous(breaks = country_ubi$serie_size_cumsum,labels = country_ubi$country_label,expand = c(0,0),position='top')+
+  theme_void()+
+  # theme(axis.text.x = element_text(angle=80,hjust = 1,vjust = 0) )+
+  scale_x_continuous(expand = c(0,0))
+
+layout <- "
+ACH
+BD#
+BE#
+BF#
+BG#
+"
+
+
+region_ubi <- combined%>%
+  mutate(Sample=fct_relevel(Sample,gsub("[A-Z]|-|(?=_).*","",names(meco_16s_ns$otu_table)[clust.res$order],perl=T)))%>%
+    ggplot(aes(x=Sample,y=1,fill=geo_region))+
+    geom_tile()+
+    scale_fill_manual(values = color_geo_clust,name="Regions")+
+    theme_void()
+
+
+tsk <-
+         (taxplot_ubi+guides(fill=guide_legend(ncol=1))
+          +theme_void()+
+            theme(legend.position = "left")+
+            guides(fill = guide_legend(
+                             label.position = "left",
+                             label.hjust = 1,
+                             title.hjust=1)))+
+  (relabubi+
+    theme(axis.title.y = element_blank(),)+
+    xlab("Relative abundance (%)")+
+    theme(legend.position = "inside",
+          legend.position.inside = c(.8,.95),
+          legend.direction = "horizontal",
+          legend.title = element_text(hjust=.5,size = 5),
+          legend.text = element_text(size = 5),
+          legend.background = element_blank())+
+      guides(color = guide_colorbar(title.position = "top",
+                                    barheight   = unit(.7, "lines"),
+                                    barwidth = unit(4, "lines"))))+
+      # guide_area()+
+    (hmapubi+theme(axis.title = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank(),
+              legend.position = c(.5,1.05),
+              legend.direction = "horizontal")+
+              # legend.title = element_text(hjust=.5))+
+       guides(fill = guide_legend(title.position = 'left')))+
+  plot_layout(widths = c(.05,1,3))
+
+
+tsk2 <-  (((prop_plot_ubi+
+     theme(legend.position = "bottom",
+          legend.title = element_text(hjust=.5))+
+       guides(fill = guide_legend(title.position = 'top')))+
+       (biomeubi+guides(fill=guide_legend(ncol=2))+theme(legend.title = element_text(hjust=.5))+
+       guides(fill = guide_legend(title.position = 'top')))+
+       (region_ubi+guides(fill=guide_legend(ncol=2))+theme(legend.title = element_text(hjust=.5))+
+       guides(fill = guide_legend(title.position = 'top'))))+
+  plot_layout(guides="collect",heights = c(3,.2,.2))&theme(legend.position = "bottom",legend.direction = "vertical"))
+  # (country_ubi+guides(fill=guide_legend(ncol=4)))+
+
+
+
+tsk_final <- (tsk+plot_spacer()+plot_spacer()+tsk2)+plot_layout(heights = c(3,1))
+
+ggsave("Figures/clean_fig/fig3/tsk2.png",tsk_final,width = 15,height = 11)
+```
+
+
+
+```{r}
+meco_ubiquists <- clone(meco_16s_ns)
+meco_ubiquists$otu_table%<>%
+  filter(rownames(.)%in%rownames(ubiquists))
+meco_ubiquists$tidy_dataset()
+
+
+orditmp <- ordinate(file2meco::meco2phyloseq(meco_ubiquists), "PCoA", "horn")
+
+expl1 <- orditmp$values$Relative_eig[1]
+expl2 <- orditmp$values$Relative_eig[2]
+expl3 <- orditmp$values$Relative_eig[3]
+
+dim1 <- orditmp$vectors[,1]
+dim2 <- orditmp$vectors[,2]
+dim3 <- orditmp$vectors[,3]
+Sample <- gsub("[A-Z]|-|(?=_).*","",names(orditmp$vectors[,1]),perl=T)
+df_ordi <- data.frame(dim1,
+                      dim2,
+                      dim3,
+                      Sample)
+df_ordi%<>%left_join(combined)
+
+pcoa_horn <- ggplot(df_ordi,aes(x=dim1,y=dim2,color=BIOME_NAME))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  # ggConvexHull::geom_convexhull(aes(fill = Biomes, color = Biomes),
+  #                               alpha=0.2)+
+  # geom_vline(xintercept=0,lty=2)+
+  # geom_hline(yintercept=0,lty=2)+
+  scale_color_manual(values=biomes_color,name="Biomes")
+
+
+ggplot(df_ordi,aes(x=dim1,y=dim2,color=Country))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  # ggConvexHull::geom_convexhull(aes(fill = Biomes, color = Biomes),
+  #                               alpha=0.2)+
+  # geom_vline(xintercept=0,lty=2)+
+  # geom_hline(yintercept=0,lty=2)+
+  scale_color_manual(values=country_color,name="Countries")
+
+
+ggplot(df_ordi,aes(x=dim1,y=dim2,color=continent))+
+  geom_point()+
+  theme_classic()+
+  ylab(paste0("PCoA 2 (",round(expl2,digits = 3)*100,"%)"))+
+  xlab(paste0("PCoA 1 (",round(expl1,digits = 3)*100,"%)"))+
+  # ggConvexHull::geom_convexhull(aes(fill = Biomes, color = Biomes),
+  #                               alpha=0.2)+
+  # geom_vline(xintercept=0,lty=2)+
+  # geom_hline(yintercept=0,lty=2)+
+  scale_color_manual(values=country_color,name="Continent")
+```
+
+## Hmap pairwise site distances
+
+```{r}
+df_pairwise <- combined%>%
+  dplyr::select(all_of(var_lt))%>%
+  scale()
+rownames(df_pairwise) <- combined$Sample
+
+dist_eco <- vegdist(scale(df_pairwise),method = "euclidean")
+clust_eco <- hclust(dist_eco)
+clust_eco$labels <- gsub("[A-Z]|-|(?=_).*","",clust_eco$labels,perl=T)
+
+dist_eco <- as.matrix(dist_eco)[clust_eco$order,clust_eco$order]
+
+df_orf <- dist_eco%>%
+  reshape2::melt()%>%
+  mutate(Var1=gsub("[A-Z]|-|(?=_).*","",Var1,perl=T),
+         Var2=gsub("[A-Z]|-|(?=_).*","",Var2,perl=T))%>%
+  mutate(Var1=fct_inorder(Var1),
+         Var2=fct_inorder(Var2))
+
+orf <-df_orf %>%
+  mutate(value=ifelse(value==0,NA,value))%>%
+  ggplot(aes(Var1,Var2,fill=arules::discretize(value,breaks = 7)))+
+           geom_tile()+
+  scale_fill_viridis_d()+
+  theme_void()
+
+orf_country <- 
+combined%>%
+  mutate(Sample=fct_relevel(Sample,levels(df_orf$Var1)))%>%
+  ggplot(aes(1,Sample,fill=Country))+
+  geom_tile()+
+  scale_fill_manual(values = country_color)+
+  theme(axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_blank())
+
+layout <- "
+AB
+CD
+"
+
+hmap_dist_eco <- (orf_country+orf+plot_spacer()+(orf_country+coord_flip()+theme(axis.text.x = element_text(angle = -90,vjust=0),axis.text.y = element_blank(),axis.ticks.y = element_blank())))+plot_layout(widths = c(.1,3),heights = c(3,.1),guides="collect",design=layout)
+
+
+dist_bio <- vegdist(labdsv::hellinger(t(meco_16s_ns$otu_table)),method = "horn")
+clust_bio <- hclust(dist_bio)
+clust_bio$labels <- gsub("[A-Z]|-|(?=_).*","",clust_bio$labels,perl=T)
+
+
+dist_bio <- as.matrix(dist_bio)[clust_bio$order,clust_bio$order]
+
+df_arf <- dist_bio%>%
+  reshape2::melt()%>%
+  mutate(Var1=gsub("[A-Z]|-|(?=_).*","",Var1,perl=T),
+         Var2=gsub("[A-Z]|-|(?=_).*","",Var2,perl=T))%>%
+  mutate(Var1=fct_inorder(Var1),
+         Var2=fct_inorder(Var2))
+
+arf <-df_arf %>%
+  mutate(value=ifelse(value==0,NA,value))%>%
+  ggplot(aes(Var1,Var2,fill=arules::discretize(value,breaks = 7)))+
+           geom_tile()+
+  scale_fill_viridis_d()+
+  theme_void()
+
+arf_country <- 
+combined%>%
+  mutate(Sample=fct_relevel(Sample,levels(df_arf$Var1)))%>%
+  ggplot(aes(1,Sample,fill=Country))+
+  geom_tile()+
+  scale_fill_manual(values = country_color)+
+  theme(axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_blank())
+
+arf_ecor <- 
+combined%>%
+  mutate(Sample=fct_relevel(Sample,levels(df_arf$Var1)))%>%
+  ggplot(aes(1,Sample,fill=eco_groups))+
+  geom_tile()+
+  scale_fill_manual(values = color_eco_clust)+
+  theme(axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_blank())
+
+
+hmap_dist_bio <- (arf_country+arf+plot_spacer()+(arf_country+coord_flip()+theme(axis.text.x = element_text(angle = -90,vjust=0),axis.text.y = element_blank(),axis.ticks.y = element_blank())))+plot_layout(widths = c(.1,3),heights = c(3,.1),guides="collect",design=layout)
+
+
+mat_geo <- geosphere::distm(combined[,c("X2","Y2")])
+colnames(mat_geo) <-rownames(mat_geo)  <- combined$Sample
+clust_geo <- hclust(as.dist(mat_geo))
+
+mat_geo <- as.matrix(mat_geo)[clust_geo$order,clust_geo$order]
+
+df_erf <- mat_geo%>%
+  reshape2::melt()%>%
+  mutate(Var1=gsub("[A-Z]|-|(?=_).*","",Var1,perl=T),
+         Var2=gsub("[A-Z]|-|(?=_).*","",Var2,perl=T))%>%
+  mutate(Var1=fct_inorder(Var1),
+         Var2=fct_inorder(Var2))
+
+erf <-df_erf %>%
+  mutate(value=ifelse(value==0,NA,value))%>%
+  ggplot(aes(Var1,Var2,fill=arules::discretize(value/1000,breaks = 7)))+
+           geom_tile()+
+  scale_fill_viridis_d()+
+  theme_void()
+
+erf_country <- 
+combined%>%
+  mutate(Sample=fct_relevel(Sample,levels(df_erf$Var1)))%>%
+  ggplot(aes(1,Sample,fill=Country))+
+  geom_tile()+
+  scale_fill_manual(values = country_color)+
+  theme(axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_blank())
+
+
+hmap_dist_geo <- (erf_country+erf+plot_spacer()+(erf_country+coord_flip()+theme(axis.text.x = element_text(angle = -90,vjust=0),axis.text.y = element_blank(),axis.ticks.y = element_blank())))+plot_layout(widths = c(.1,3),heights = c(3,.1),guides="collect",design=layout)
+
+
+clustered_dist <- cutree(clust_geo,k = 6)
+plot(clust_geo)
+
+combined$cluster_geo <- as.factor(clustered_dist)
+
+erf_clust <- 
+combined%>%
+  mutate(Sample=fct_relevel(Sample,levels(df_erf$Var1)))%>%
+  ggplot(aes(1,Sample,fill=cluster_geo))+
+  geom_tile()+
+  scale_fill_manual(values = c("#604E5C",
+                               "#376796",
+                               "#7D3C01",
+                               "#F2C071",
+                               "#131D5B",
+                               "#FCF6E8"))+
+  theme(axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks.x = element_blank())
+
+hmap_dist_geo_cluster <- (erf_clust+erf+plot_spacer()+(erf_clust+coord_flip()+theme(axis.text.x = element_text(angle = -90,vjust=0),axis.text.y = element_blank(),axis.ticks.y = element_blank())))+plot_layout(widths = c(.1,3),heights = c(3,.1),guides="collect",design=layout)
+ggsave("Figures/hmap_dist_bio.png",hmap_dist_bio,width = 13,height = 13)
+ggsave("Figures/hmap_dist_eco.png",hmap_dist_eco,width = 13,height = 13)
+ggsave("Figures/hmap_dist_geo.png",hmap_dist_geo,width = 13,height = 13)
 ```
 
