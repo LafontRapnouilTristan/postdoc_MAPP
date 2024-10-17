@@ -17,7 +17,8 @@ importFromHPC <- NULL
 postList <- NULL
 fitTF <- NULL
 varparts <- NULL
-predcomputed <- NULL
+predcomputedexp <- NULL
+predcomputedpred <- NULL
 
 nSamples = c(250)
 thin = c(1000)
@@ -34,7 +35,8 @@ for(i in 1:length(post_file_path)){
   cat(sprintf("fitting time %.1f sec\n", importFromHPC[[nameOf]][[nChains+1]]))
   fitTF[[nameOf]] <- importPosteriorFromHPC(m_list$XFormula_lt[[nameOf]], postList[[nameOf]], nSamples, thin, transient)
   varparts[[nameOf]] <- computeVariancePartitioning(fitTF[[nameOf]])
-  predcomputed[[nameOf]] <- computePredictedValues(fitTF[[nameOf]])
+  predcomputedexp[[nameOf]] <- computePredictedValues(fitTF[[nameOf]],expected = TRUE)
+  predcomputedreal[[nameOf]] <- computePredictedValues(fitTF[[nameOf]],expected = FALSE)
 }
 
 
@@ -366,8 +368,111 @@ library(dplyr)
 library(ggplot2)
 library(magritrr)
 
+pred <- computePredictedValues(fitTF$mpa,expected = F)
+pred %<>% reshape2::melt()%>%
+  rename(mcmc_sample=Var3,
+         site=Var1,
+         cluster=Var2)
+
+mod_alpha_pred <- pred%>%
+  group_by(site,mcmc_sample)%>%
+  summarise(nzeroz=sum(value==0),
+            pred_alphadiv=sum(value>0))%>%
+  ungroup()%>%
+  mutate(input="predicted")
+
+minmax <- mod_alpha_pred%>%
+  group_by(site)%>%
+  summarise(minpred=min(pred_alphadiv),
+            maxpred=max(pred_alphadiv))
+
+df2plot <- data.frame(alphadiv=rowSums(fitTF$mpa$Y>0))%>%
+  mutate(site=rownames(.),
+         input="oberved")%>%
+  full_join(minmax)
+
+mpa <- df2plot%>%
+  arrange(desc(alphadiv))%>%
+  mutate(site=forcats::fct_inorder(site))%>%
+  ggplot()+
+  geom_segment(aes(x=site,xend=site,y=minpred,yend=maxpred),color="black")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle=90))+
+  ylab("ASVs ricness")+
+  geom_point(aes(x=site,y=alphadiv),fill="darkorange",size=2,shape=23,color="coral1")+
+  ggtitle("mpa")
+
+
+
+pred <- computePredictedValues(fitTF$mclassic,expected = F)
+pred %<>% reshape2::melt()%>%
+  rename(mcmc_sample=Var3,
+         site=Var1,
+         cluster=Var2)
+
+mod_alpha_pred <- pred%>%
+  group_by(site,mcmc_sample)%>%
+  summarise(nzeroz=sum(value==0),
+            pred_alphadiv=sum(value>0))%>%
+  ungroup()%>%
+  mutate(input="predicted")
+
+minmax <- mod_alpha_pred%>%
+  group_by(site)%>%
+  summarise(minpred=min(pred_alphadiv),
+            maxpred=max(pred_alphadiv))
+
+df2plot <- data.frame(alphadiv=rowSums(fitTF$mclassic$Y>0))%>%
+  mutate(site=rownames(.),
+         input="oberved")%>%
+  full_join(minmax)
+
+mclassic <- df2plot%>%
+  arrange(desc(alphadiv))%>%
+  mutate(site=forcats::fct_inorder(site))%>%
+  ggplot()+
+  geom_segment(aes(x=site,xend=site,y=minpred,yend=maxpred),color="black")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle=90))+
+  ylab("ASVs ricness")+
+  geom_point(aes(x=site,y=alphadiv),fill="darkorange",size=2,shape=23,color="coral1")+
+  ggtitle("mclassic")
+
+
+raw_melted <- fitTF$mclassic$Y%>%
+  reshape2::melt()%>%
+  rename(site=Var1,
+         cluster=Var2,
+         value_obs=value)
+
+relab <- pred%>%
+  left_join(raw_melted,by=c("site","cluster"))%>%
+  group_by(mcmc_sample,site)%>%
+  mutate(relab_pred=(value/sum(value))*100,
+         relab_obs=(value_obs/sum(value_obs))*100)%>%
+  ungroup()
+  
+relab_summarised <- relab%>%
+  mutate(delta_relab=abs(relab_pred-relab_obs))%>%
+  group_by(site,cluster)%>%
+  summarise(mean_delta=mean(delta_relab),
+            sd_delta=sd(delta_relab))
+
+my_breaks = c(0, 10, 20, 30, 40, 50)
+my_breaks <- plyr::round_any(exp(seq(log(1), log(50), length = 5)), 3)
+relab_summarised%>%
+  ggplot(aes(x=site,y=cluster,fill=mean_delta))+
+  geom_hex()+
+  scale_fill_gradient(low="cornflowerblue",high = "darkorange",trans="log10")
+
+
+
+
+
+
+
 alpha_pred_plot <- NULL
-for(i in names(predcomputed)[-1]){
+for(i in names(predcomputed)){
   
   if(grepl("hellinger",i)){
     
@@ -400,52 +505,53 @@ for(i in names(predcomputed)[-1]){
       mutate(value=ifelse(value<0.5,0,round(value,digits=0)))
   }
   
-mod_alpha_pred <- df2use%>%
-  group_by(site,mcmc_sample)%>%
-  summarise(nzeroz=sum(value==0),
-            pred_alphadiv=sum(value>0))%>%
-  ungroup()%>%
-  mutate(input="predicted")
-
-
-
-# 
-# tset <- data.frame(alphadiv=rowSums(fitTF$mclassicscale$Y>0))%>%
-#   mutate(site=rownames(.),
-#          input="oberved")%>%
-#   full_join(mod_alpha_pred)
-# # tset should be 199199 row long
-# 
-
-minmax <- mod_alpha_pred%>%
-  group_by(site)%>%
-  summarise(minpred=min(pred_alphadiv),
-            maxpred=max(pred_alphadiv))
-
-df2plot <- data.frame(alphadiv=rowSums(fitTF$mclassic$Y>0))%>%
-  mutate(site=rownames(.),
-         input="oberved")%>%
-  full_join(minmax)
-
-alpha_pred_plot[[i]] <- df2plot%>%
-  arrange(desc(alphadiv))%>%
-  mutate(site=forcats::fct_inorder(site))%>%
-  ggplot()+
-  geom_segment(aes(x=site,xend=site,y=minpred,yend=maxpred),color="black")+
-  theme_classic()+
-  theme(axis.text.x = element_text(angle=90))+
-  ylab("ASVs ricness")+
-  geom_point(aes(x=site,y=alphadiv),fill="darkorange",size=2,shape=23,color="coral1")+
-  ggtitle(i)
-ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/predalpha/predalpha_",i,".png"),alpha_pred_plot[[i]],width=8,height = 5)
-
-
-
-rm(df2use,mod_alpha_pred,minmax)
-gc()
-
-
+  mod_alpha_pred <- df2use%>%
+    group_by(site,mcmc_sample)%>%
+    summarise(nzeroz=sum(value==0),
+              pred_alphadiv=sum(value>0))%>%
+    ungroup()%>%
+    mutate(input="predicted")
+  
+  
+  
+  # 
+  # tset <- data.frame(alphadiv=rowSums(fitTF$mclassicscale$Y>0))%>%
+  #   mutate(site=rownames(.),
+  #          input="oberved")%>%
+  #   full_join(mod_alpha_pred)
+  # # tset should be 199199 row long
+  # 
+  
+  minmax <- mod_alpha_pred%>%
+    group_by(site)%>%
+    summarise(minpred=min(pred_alphadiv),
+              maxpred=max(pred_alphadiv))
+  
+  df2plot <- data.frame(alphadiv=rowSums(fitTF$mclassic$Y>0))%>%
+    mutate(site=rownames(.),
+           input="oberved")%>%
+    full_join(minmax)
+  
+  alpha_pred_plot[[i]] <- df2plot%>%
+    arrange(desc(alphadiv))%>%
+    mutate(site=forcats::fct_inorder(site))%>%
+    ggplot()+
+    geom_segment(aes(x=site,xend=site,y=minpred,yend=maxpred),color="black")+
+    theme_classic()+
+    theme(axis.text.x = element_text(angle=90))+
+    ylab("ASVs ricness")+
+    geom_point(aes(x=site,y=alphadiv),fill="darkorange",size=2,shape=23,color="coral1")+
+    ggtitle(i)
+  ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/predalpha/predalpha_",i,".png"),alpha_pred_plot[[i]],width=8,height = 5)
+  
+  
+  
+  rm(df2use,mod_alpha_pred,minmax)
+  gc()
+  
+  
 }
+
 
 
 df2use%>%
@@ -457,4 +563,3 @@ df2use%>%
   group_by(site)%>%
   summarise(mean_delta=mean(delta_relab),
             sd_delta=sd(delta_relab))
-

@@ -20,3 +20,7 @@ R_scripts/paper_16s/frogs_input/
 R_scripts/paper_16s/outputs/
 picrust2/
 *.csv
+*.png
+*.svg
+*.docx
+*.gephi

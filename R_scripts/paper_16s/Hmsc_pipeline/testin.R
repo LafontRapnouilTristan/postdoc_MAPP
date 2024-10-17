@@ -2,7 +2,7 @@
 
 
 library("easypackages")
-libraries("Hmsc","readr","dplyr","magrittr","tidyr","jsonify","ggplot2","patchwork")
+libraries("Hmsc","readr","dplyr","magrittr","tidyr","jsonify","ggplot2","patchwork","igraph")
 
 getwd()
 
@@ -42,6 +42,42 @@ site_data %<>% mutate(Sample=as.factor(Sample),
                       Location=as.factor(Location))
 rownames(site_data) <- site_data$Sample
 rownames(as.data.frame(Y))==rownames(site_data) #check if same order
+
+# Cluster @200Km
+
+mat_geo <- geosphere::distm(site_data[,c("X","Y_jitd")])
+mat_geo[mat_geo>200000] <- 0 
+mat_geo[mat_geo!=0] <- 1 
+
+g <- graph_from_adjacency_matrix(mat_geo, mode = 'undirected', weighted = T)
+plot(g, edge.width = E(g)$weigths, vertex.size = 3, vertex.label.cex = .8, vertex.shape = 'none', layout = scale(as.matrix(site_data[,c("X","Y_jitd")])),edge.color="red",edge.width=1)
+count_components(g) #62 clusters @100km
+plot(g, edge.width = E(g)$weigths, vertex.size = 3, vertex.label.cex = .8, vertex.shape = 'none', edge.color="red",edge.width=1)
+
+clust<-cluster_optimal(g)
+clust$membership
+
+site_data$nnr_cluster <- clust$membership
+site_data%>%
+  ggplot(aes(x=nnr_cluster,fill=Country))+
+  geom_bar()+
+  scale_fill_manual(values=c("#800000","#9a6324","#808000","#469990","#000075","#000000","#e6194b","#f58231","#ffe119","#bfef45","#3cb44b","#42d4f4","#4363d8","#911eb4","#f032e6","#a9a9a9","#fabed4","#ffd8b1","#fffac8","#aaffc3","#dcbeff","darkorchid4","darkolivegreen3"))+
+  ggpubr::theme_classic2()
+
+
+# get nnr_cluster centroids
+
+sf_sitedata <-  st_as_sf(site_data, coords = c("X", "Y_jitd"), 
+                         crs = 4326, agr = "constant")
+
+nc_grouped <- sf_sitedata %>%
+  group_by(nnr_cluster) %>%
+  summarise(st_union(geometry)) %>%
+  st_centroid() 
+
+nc_grouped %<>%
+  dplyr::mutate(X = sf::st_coordinates(.)[,1],
+                Y_jitd = sf::st_coordinates(.)[,2])
 
 # subset data
 set.seed(973)
@@ -112,17 +148,29 @@ XFormula_null <- "~ XData$Depth" # NULL model
 
 
 # Define the studyDesign as a dataframe 
-studyDesign <- data.frame(Coords=as.factor(1:nrow(Ysub))) 
+studyDesign <- data.frame(clust200K=as.factor(paste0("geoclust_",XData$nnr_cluster)),
+                          Sample=droplevels(XData$Sample)) 
 # Set up the random effects
 
 # Here locations.xy would be a matrix (one row per unique location)
 # where row names are the levels of studyDesign$location,
 # and the columns are the xy-coordinates
-xycoords <- XData[,c("X","Y_jitd")]  # get spatial data removing duplicate rows
+xycoords <- nc_grouped%>%
+  filter(nnr_cluster%in%unique(XData$nnr_cluster))%>%
+  as.data.frame%>%
+  select(c(3:4))%>%
+  mutate(across(.cols=c(1,2),.fns=as.numeric))# get spatial data removing duplicate rows
 xycoords <- as.matrix(xycoords)
-rownames(xycoords) <- studyDesign$Coords # Rownames as locations unique ID
+rownames(xycoords) <- levels(studyDesign$clust200K) # Rownames as locations unique ID
 
-rL.spatial = HmscRandomLevel(sData = xycoords) # Spatial random effect to account for space induced patterns
+#unstructured random effect at sample level
+rL.sample <- HmscRandomLevel(units = droplevels(studyDesign$Sample))
+
+#spatial random effect at clust200k-level
+rL.spatial <- HmscRandomLevel(sData=xycoords)
+
+
+# rL.spatial = HmscRandomLevel(sData = xycoords) # Spatial random effect to account for space induced patterns
 XData <- XData[,grep(paste(c(var_interest,"Depth"),collapse="|"),colnames(XData))]
 
 
@@ -138,34 +186,39 @@ m_list <- NULL
 for(i in 1:length(XFormula_list)){
   
   # hurdle PA
-  mpa <- Hmsc(Y=Ypa, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "probit", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+  mpa <- Hmsc(Y=Ypa, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "probit", studyDesign=studyDesign, ranLevels=list("Sample" = rL.sample, "clust200K"=rL.spatial))
   # Hurdle abundance
-  mabu <- Hmsc(Y=Yabu, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "normal", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+  mabu <- Hmsc(Y=Yabu, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "normal", studyDesign=studyDesign, ranLevels=list(Sample = rL.sample, clust200K=rL.spatial))
+  # hurdle PA scale
+  mpascale <- Hmsc(Y=Ypa, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "probit", studyDesign=studyDesign, ranLevels=list(Sample = rL.sample, clust200K=rL.spatial))
+  # Hurdle abundance scale
+  mabuscale <- Hmsc(Y=Yabu, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "normal", studyDesign=studyDesign, ranLevels=list(Sample = rL.sample, clust200K=rL.spatial))
   # Classic model
-  mclassic <- Hmsc(Y=Yraw, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+  mclassic <- Hmsc(Y=Yraw, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Sample = rL.sample, clust200K=rL.spatial))
   # Classic model with scaled Y
-  mclassicscale <- Hmsc(Y=Yraw, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
+  mclassicscale <- Hmsc(Y=Yraw, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Sample = rL.sample, clust200K=rL.spatial))
   # Classic model
-  mhellinger <- Hmsc(Y=Yhell, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
-  # Classic model with scaled Y
-  mhellingerscale <- Hmsc(Y=Yhell, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Coords = rL.spatial))
-  
+  # mhellinger <- Hmsc(Y=Yhell, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Sample = rL.spatial))
+  # # Classic model with scaled Y
+  # mhellingerscale <- Hmsc(Y=Yhell, YScale = T, XData = XData,  XFormula = as.formula(XFormula_list[i]), distr = "lognormal poisson", studyDesign=studyDesign, ranLevels=list(Sample = rL.spatial))
+  # 
   m_list[[names(XFormula_list)[i]]][["mpa"]] <- mpa
   m_list[[names(XFormula_list)[i]]][["mabu"]] <- mabu
+  m_list[[names(XFormula_list)[i]]][["mpascale"]] <- mpascale
+  m_list[[names(XFormula_list)[i]]][["mabuscale"]] <- mabu
   m_list[[names(XFormula_list)[i]]][["mclassic"]] <- mclassic
   m_list[[names(XFormula_list)[i]]][["mclassicscale"]] <- mclassicscale
-  m_list[[names(XFormula_list)[i]]][["mhellinger"]] <- mhellinger
-  m_list[[names(XFormula_list)[i]]][["mhellingerscale"]] <- mhellingerscale
-  
+  # m_list[[names(XFormula_list)[i]]][["mhellinger"]] <- mhellinger
+  # m_list[[names(XFormula_list)[i]]][["mhellingerscale"]] <- mhellingerscale
+  # 
 }
 
-save(m_list, file = file.path(modelDir, "unfitted_models_flt_subset.RData"))
+save(m_list, file = file.path(modelDir, "unfitted_models_flt_subset_newrand.RData"))
 
 # TESTING THAT MODELS FIT WITHOUT ERRORS
-mod_type <- c("mpa","mabu","mclassic","mclassicscale","mhellinger","mhellingerscale")
 
 for(i in 1:length(XFormula_list)){
-  for(j in mod_type){
+  for(j in names(m_list[[i]])){
     print(paste0(names(XFormula_list)[i]," : ",j))
     m_list[[names(XFormula_list)[i]]][[j]] <- sampleMcmc(m_list[[i]][[j]],samples=2,verbose = 1)
   }
@@ -178,18 +231,18 @@ for(i in 1:length(XFormula_list)){
 nParallel = 3 #Default: nParallel = nChains
 # set.seed(973) #reproductibility
 # SET DIRECTORIES 
-localDir = "R_scripts/paper_16s/Hmsc_pipeline/"
-modelDir = file.path(localDir, "models")
-load(file=file.path(modelDir,"unfitted_models_flt_subset.RData"))
+localDir <- "R_scripts/paper_16s/Hmsc_pipeline/"
+modelDir <- file.path(localDir, "models")
+load(file=file.path(modelDir,"unfitted_models_flt_subset_newrand.RData"))
 
-samples_list = c(250)
-thin_list = c(10)
+
+samples_list <- c(250)
+thin_list <- c(2)
 nChains <- 4
 
 
 # Classic Fit
 
-mod_type <- c("mpa","mabu","mclassic","mclassicscale","mhellinger","mhellingerscale")
 model_formu <- length(m_list)
 
 for(i in 1:length(samples_list)){
@@ -200,7 +253,7 @@ for(i in 1:length(samples_list)){
   
   
   for (m_formu in 1:model_formu) {
-    for(m_type in mod_type){
+    for(m_type in names(m_list[[i]])){
       
       mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
       print(paste0("model -> ",mod_name))
@@ -209,7 +262,7 @@ for(i in 1:length(samples_list)){
                                            "_samples_", as.character(samples),
                                            "_chains_",as.character(nChains),
                                            "_",mod_name,
-                                           "_subset.Rdata",
+                                           "_subset_newrand.Rdata",
                                            sep = ""))
       if(file.exists(filename)){
         print("model had been fitted already")
@@ -233,104 +286,104 @@ for(i in 1:length(samples_list)){
 }
 
 # FIT WITH HMSC HPC
-
-
-if(is.null(nParallel)) nParallel <- nChains
-
-
-
-# Initiate sampling for HPC 
-# Produced INIT files can be read into R and look like classic R hmsc output.
-# They are just 'primed' fit for HPC to use.
-for(i in 1:length(samples_list)){
-  
-  thin <- thin_list[i]
-  samples <- samples_list[i]
-  print(paste0("thin = ",as.character(thin),"; samples = ",as.character(samples)))
-  
-  
-  for (m_formu in 1:model_formu) {
-    for(m_type in mod_type){
-      
-      mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
-      print(paste0("model -> ",mod_name))
-      
-      filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
-                                           "_samples_", as.character(samples),
-                                           "_chains_",as.character(nChains),
-                                           "_",mod_name,
-                                           "_init_files.rds",
-                                           sep = ""))
-      if(file.exists(filename)){
-        print("model had been fitted already")
-      } else {
-        print(date())
-        m <- m_list[[m_formu]][[m_type]]
-        minit <- sampleMcmc(m, 
-                            samples = samples, 
-                            thin=thin,
-                            adaptNf=rep(ceiling(0.4*samples*thin),m$nr), 
-                            transient = ceiling(0.5*samples*thin),
-                            nChains = nChains,
-                            updater = list(GammaEta = FALSE),
-                            engine = "HPC") 
-        saveRDS(to_json(minit), file=filename)
-        gc()
-      }
-    }
-  }
-}
-
-
-# RUn with Pytorch HPS version.
-python <- file.path("R_scripts/paper_16s/Hmsc_pipeline/hmsc-venv/", "Scripts", "python") 
-
-verbose = 100
-for(i in 1:length(samples_list)){
-  thin <- thin_list[i]
-  samples <- samples_list[i]
-  print(paste0("thin = ",as.character(thin),"; samples = ",as.character(samples)))
-  
-  for (m_formu in 1:model_formu) {
-    for(m_type in mod_type){
-      
-      mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
-      print(paste0("model -> ",mod_name))
-      
-      filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
-                                           "_samples_", as.character(samples),
-                                           "_chains_",as.character(nChains),
-                                           "_",mod_name,
-                                           "_init_files.rds",
-                                           sep = ""))
-      
-      post_file_path <- file.path(modelDir,paste("models_thin_", as.character(thin),
-                                                 "_samples_", as.character(samples),
-                                                 "_chains_",as.character(nChains),
-                                                 "_",mod_name,
-                                                 "_post_file.rds",
-                                                 sep = "")) 
-      
-      if(file.exists(post_file_path)){
-        print("model had been fitted already")
-      } else {
-        
-        
-        python_cmd_args = paste("-m hmsc.run_gibbs_sampler",
-                                "--input", shQuote(filename),
-                                "--output", shQuote(post_file_path),
-                                "--samples", samples,
-                                "--transient",  ceiling(0.5*samples*thin),
-                                "--thin", thin,
-                                "--verbose", verbose)
-        cat(paste(shQuote(python), python_cmd_args), "\n")
-        system2(python, python_cmd_args)
-        gc()
-      }
-    }
-  }
-}
-
+# 
+# 
+# if(is.null(nParallel)) nParallel <- nChains
+# 
+# 
+# 
+# # Initiate sampling for HPC 
+# # Produced INIT files can be read into R and look like classic R hmsc output.
+# # They are just 'primed' fit for HPC to use.
+# for(i in 1:length(samples_list)){
+#   
+#   thin <- thin_list[i]
+#   samples <- samples_list[i]
+#   print(paste0("thin = ",as.character(thin),"; samples = ",as.character(samples)))
+#   
+#   
+#   for (m_formu in 1:model_formu) {
+#     for(m_type in mod_type){
+#       
+#       mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
+#       print(paste0("model -> ",mod_name))
+#       
+#       filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
+#                                            "_samples_", as.character(samples),
+#                                            "_chains_",as.character(nChains),
+#                                            "_",mod_name,
+#                                            "_init_files.rds",
+#                                            sep = ""))
+#       if(file.exists(filename)){
+#         print("model had been fitted already")
+#       } else {
+#         print(date())
+#         m <- m_list[[m_formu]][[m_type]]
+#         minit <- sampleMcmc(m, 
+#                             samples = samples, 
+#                             thin=thin,
+#                             adaptNf=rep(ceiling(0.4*samples*thin),m$nr), 
+#                             transient = ceiling(0.5*samples*thin),
+#                             nChains = nChains,
+#                             updater = list(GammaEta = FALSE),
+#                             engine = "HPC") 
+#         saveRDS(to_json(minit), file=filename)
+#         gc()
+#       }
+#     }
+#   }
+# }
+# 
+# 
+# # RUn with Pytorch HPC version.
+# python <- file.path("R_scripts/paper_16s/Hmsc_pipeline/hmsc-venv/", "Scripts", "python") 
+# 
+# verbose = 100
+# for(i in 1:length(samples_list)){
+#   thin <- thin_list[i]
+#   samples <- samples_list[i]
+#   print(paste0("thin = ",as.character(thin),"; samples = ",as.character(samples)))
+#   
+#   for (m_formu in 1:model_formu) {
+#     for(m_type in mod_type){
+#       
+#       mod_name <- paste0(names(m_list)[m_formu],"_",m_type)
+#       print(paste0("model -> ",mod_name))
+#       
+#       filename <- file.path(modelDir,paste("models_thin_", as.character(thin),
+#                                            "_samples_", as.character(samples),
+#                                            "_chains_",as.character(nChains),
+#                                            "_",mod_name,
+#                                            "_init_files.rds",
+#                                            sep = ""))
+#       
+#       post_file_path <- file.path(modelDir,paste("models_thin_", as.character(thin),
+#                                                  "_samples_", as.character(samples),
+#                                                  "_chains_",as.character(nChains),
+#                                                  "_",mod_name,
+#                                                  "_post_file.rds",
+#                                                  sep = "")) 
+#       
+#       if(file.exists(post_file_path)){
+#         print("model had been fitted already")
+#       } else {
+#         
+#         
+#         python_cmd_args = paste("-m hmsc.run_gibbs_sampler",
+#                                 "--input", shQuote(filename),
+#                                 "--output", shQuote(post_file_path),
+#                                 "--samples", samples,
+#                                 "--transient",  ceiling(0.5*samples*thin),
+#                                 "--thin", thin,
+#                                 "--verbose", verbose)
+#         cat(paste(shQuote(python), python_cmd_args), "\n")
+#         system2(python, python_cmd_args)
+#         gc()
+#       }
+#     }
+#   }
+# }
+# 
 
 #### EVALUATION #####
 
@@ -338,9 +391,9 @@ localDir <- "R_scripts/paper_16s/Hmsc_pipeline/"
 modelDir <- file.path(localDir, "models")
 resultDir <- file.path(localDir, "results")
 post_file_path <- list.files(modelDir,full.names = T)
-post_file_path <- post_file_path[-c(13:15)]
+post_file_path <- post_file_path[c(1:12)]
 
-nChains <- 4
+nChains <- 2
 importFromHPC <- NULL
 postList <- NULL
 fitTF <- NULL
@@ -349,9 +402,8 @@ predcomputed <- NULL
 predcomputedexp <- NULL
 predcomputedreal <- NULL
 nSamples = c(250)
-thin = c(1000)
+thin = c(2)
 transient = ceiling(0.5*nSamples*thin)
-nChains <- 4
 
 loadRData <- function(fileName){
   #loads an RData file, and returns it
@@ -378,7 +430,7 @@ loadRData <- function(fileName){
 
 varpart_list <- NULL
 for(formu in names(varparts)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     
     varpart_list[[formu]][[i]] <- varparts[[formu]][[i]]$vals%>%
       as.data.frame()%>%
@@ -397,10 +449,10 @@ for(formu in names(varparts)){
   }
 }
 
-varpart_lt <- varpart_list$XFormula_lt$mabu+varpart_list$XFormula_lt$mpa+varpart_list$XFormula_lt$mclassic+varpart_list$XFormula_lt$mclassicscale+varpart_list$XFormula_lt$mhellinger+varpart_list$XFormula_lt$mhellingerscale+plot_layout(guides="collect")
-varpart_null <- varpart_list$XFormula_null$mabu+varpart_list$XFormula_null$mpa+varpart_list$XFormula_null$mclassic+varpart_list$XFormula_null$mclassicscale+varpart_list$XFormula_null$mhellinger+varpart_list$XFormula_null$mhellingerscale+plot_layout(guides="collect")
-ggsave("R_scripts/paper_16s/Hmsc_pipeline/results/subset/varpart_lt.png",varpart_lt,width = 13,height = 7)
-ggsave("R_scripts/paper_16s/Hmsc_pipeline/results/subset/varpart_null.png",varpart_null,width = 13,height = 7)
+varpart_lt <- varpart_list$XFormula_lt$mabu+varpart_list$XFormula_lt$mpa+varpart_list$XFormula_lt$mclassic+varpart_list$XFormula_lt$mclassicscale+varpart_list$XFormula_lt$mpascale+varpart_list$XFormula_lt$mabuscale+plot_layout(guides="collect")
+varpart_null <- varpart_list$XFormula_null$mabu+varpart_list$XFormula_null$mpa+varpart_list$XFormula_null$mclassic+varpart_list$XFormula_null$mclassicscale+varpart_list$XFormula_null$mpascale+varpart_list$XFormula_null$mabuscale+plot_layout(guides="collect")
+ggsave("R_scripts/paper_16s/Hmsc_pipeline/results/subset_newrand/varpart_lt.png",varpart_lt,width = 13,height = 7)
+ggsave("R_scripts/paper_16s/Hmsc_pipeline/results/subset_newrand/varpart_null.png",varpart_null,width = 13,height = 7)
 
 
 
@@ -411,7 +463,7 @@ posterior_list <- NULL
 post_tmp <- NULL
 
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     nr <- fitTF[[formu]][[i]]$nr
     mpost <- convertToCodaObject(fitTF[[formu]][[i]])
     
@@ -453,12 +505,12 @@ for(formu in names(fitTF)){
 }
 
 
-
+#Modfit
 EvModFit <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i))
-    EvModFit[[formu]][[i]] <- evaluateModelFit(fitTF[[formu]][[i]],predcomputed[[formu]][[i]])
+    EvModFit[[formu]][[i]] <- evaluateModelFit(fitTF[[formu]][[i]],predcomputedexp[[formu]][[i]])
   }
 }
 
@@ -466,7 +518,7 @@ for(formu in names(fitTF)){
 melted_modfit <- NULL
 for(formu in names(fitTF)){
 
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i))
     binded_melted_i <- EvModFit[[formu]][[i]]%>%
       bind_cols(.id = i)%>%
@@ -476,9 +528,10 @@ for(formu in names(fitTF)){
   }
 }
 
+
 vio_modfit <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i)) 
     vio_modfit[[formu]][[i]] <- 
       melted_modfit[[formu]]%>%
@@ -487,7 +540,7 @@ for(formu in names(fitTF)){
       geom_violin(fill="darkcyan")+
       facet_wrap(~variable, scales = "free_y")+
       ggtitle(i)
-    ggsave(paste0(resultDir,"/subset/modfit/modfit_",formu,"_",i,".png"),vio_modfit[[formu]][[i]],height = 6,width = 5)
+    ggsave(paste0(resultDir,"/subset_newrand/modfit/modfit_",formu,"_",i,".png"),vio_modfit[[formu]][[i]],height = 6,width = 5)
     
   }
 }
@@ -495,10 +548,11 @@ for(formu in names(fitTF)){
 
 gc()
 
+# Caterpillar and density
 caterpillar_list <- NULL
 density_list <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i)) 
     nr <- fitTF[[formu]][[i]]$nr
   mpost <- convertToCodaObject(fitTF[[formu]][[i]], spNamesNumbers = c(T,F), covNamesNumbers = c(T,F))
@@ -558,20 +612,29 @@ for(formu in names(fitTF)){
   
   
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     for(j in 1:length(caterpillar_list[[formu]][[i]])){
-      ggsave(paste0(resultDir,"/subset/caterpillar/","caterpillar_",formu,"_",i,"_",names(caterpillar_list[[formu]][[i]][j]),".png"),caterpillar_list[[formu]][[i]][[j]],width = 13,height = 7)
-      ggsave(paste0(resultDir,"/subset/density/","density_",formu,"_",i,"_",names(density_list[[formu]][[i]][j]),".png"),density_list[[formu]][[i]][[j]],width = 13,height = 7)
+      ggsave(paste0(resultDir,"/subset_newrand/caterpillar/","caterpillar_",formu,"_",i,"_",names(caterpillar_list[[formu]][[i]][j]),".png"),caterpillar_list[[formu]][[i]][[j]],width = 13,height = 7)
+      ggsave(paste0(resultDir,"/subset_newrand/density/","density_",formu,"_",i,"_",names(density_list[[formu]][[i]][j]),".png"),density_list[[formu]][[i]][[j]],width = 13,height = 7)
       
     }
   }
 }
 
+
+# Number of LV
+for(formu in names(fitTF)){
+  for(i in names(m_list[[formu]])){
+    print(fitTF[[formu]][[i]]$nf)
+  }
+}
+
+#gelman diag
 gel_list <- NULL
 psrf_list <- NULL
 geltmp <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i)) 
     mpost <- convertToCodaObject(fitTF[[formu]][[i]], spNamesNumbers = c(T,F), covNamesNumbers = c(T,F))
     nr <- fitTF[[formu]][[i]]$nr
@@ -581,20 +644,20 @@ for(formu in names(fitTF)){
       print(param)
       if(length(mpost[[param]])!=nr){
         geltmp <- gelman.diag(mpost[[param]],multivariate = F)
-        save(geltmp,file = paste0(resultDir,"/subset/gelman/gelman_",formu,"_",i,"_",param,".RData"))
+        save(geltmp,file = paste0(resultDir,"/subset_newrand/gelman/gelman_",formu,"_",i,"_",param,".RData"))
         gc()
       }else{
         if(param=="Omega"){
           for(r in 1:nr){
             geltmp <- gelman.diag(mpost[[param]][[r]],multivariate = F)
-            save(geltmp,file = paste0(resultDir,"/subset/gelman/gelman_",formu,"_",i,"_",param,"_",r,".RData"))
+            save(geltmp,file = paste0(resultDir,"/subset_newrand/gelman/gelman_",formu,"_",i,"_",param,"_",r,".RData"))
             gc()
           }
         }
         else{
           for(r in 1:nr){
             geltmp <- gelman.diag(mpost[[param]][[r]],multivariate = F)
-            save(geltmp,file = paste0(resultDir,"/subset/gelman/gelman_",formu,"_",i,"_",param,"_",r,".RData"))
+            save(geltmp,file = paste0(resultDir,"/subset_newrand/gelman/gelman_",formu,"_",i,"_",param,"_",r,".RData"))
             gc()
           }
         }
@@ -605,10 +668,11 @@ for(formu in names(fitTF)){
 
 
 
-allgelman <- list.files(paste0(resultDir,"/subset/gelman/"),full.names = T)
+
+allgelman <- list.files(paste0(resultDir,"/subset_newrand/gelman/"),full.names = T)
 psrf_plot <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     print(paste0(formu,": ",i)) 
     psrf_data_plot <- NULL
     gelman_mod <- allgelman[grepl(paste0(formu,"_",i,"_"),allgelman)]
@@ -626,7 +690,7 @@ for(formu in names(fitTF)){
       ggplot(aes(x=param,y=psrf,fill=param))+
       geom_violin()+
       facet_wrap(~param,scales = 'free',drop = T)
-    ggsave(paste0(resultDir,"/subset/gelman/plots/gelmanplot_",formu,"_",i,".png"),plot=psrf_plot[[formu]][[i]],height = 7,width=10)
+    ggsave(paste0(resultDir,"/subset_newrand/gelman/plots/gelmanplot_",formu,"_",i,".png"),plot=psrf_plot[[formu]][[i]],height = 7,width=10)
   }
 }
 
@@ -646,7 +710,7 @@ biplot_list <- NULL
 factors <- c(1,2)
 
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
   etaPost <- getPostEstimate(fitTF[[formu]][[i]],"Eta")
   lambdaPost <-getPostEstimate(fitTF[[formu]][[i]],"Lambda")
   
@@ -671,7 +735,7 @@ for(formu in names(fitTF)){
   lv_frame%<>%
     left_join(mutate(as.data.frame(fitTF[[formu]][[i]]$X),
                      names=rownames(fitTF[[formu]][[i]]$X),
-                     Depth=XData$Depth))
+                     Depth=fitTF[[formu]][[i]]$XData$Depth))
   
   name_var <- ifelse(grepl("null",formu),"Sequencing depth", "Min temperature (C°)")
   
@@ -696,7 +760,7 @@ for(formu in names(fitTF)){
     ggpubr::theme_classic2()+
     labs(x="Latent variable 1",y="Latent variable 2")+
     ggtitle(paste0(formu,": ",i))
-  ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/subset/biplots/biplot_",formu,"_",i,".png"),biplot_list[[formu]][[i]],width=6,height = 5)
+  ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/subset_newrand/biplots/biplot_",formu,"_",i,".png"),biplot_list[[formu]][[i]],width=6,height = 5)
 }
 }
 
@@ -713,39 +777,16 @@ for(formu in names(fitTF)){
 # sqrt(1371/25139) #0.2333
 alpha_pred_plot <- NULL
 for(formu in names(fitTF)){
-  for(i in mod_type){
+  for(i in names(m_list[[formu]])){
     
-    if(grepl("hellinger",i)){
-      
-      melted.df <- as.data.frame(predcomputedreal[[formu]][[i]])
-      melted.df <-  mutate(melted.df,site=rownames(melted.df))
-      # dplyr::select(c(site,grep("\\.1{1}$|\\.2{1}$|\\.3{1}$",colnames(.))))%>%
-      melted.df <- reshape2::melt(melted.df)
-      melted.df$cluster <-  lapply(strsplit(as.character(melted.df$variable),split = "\\."),"[",1)
-      melted.df$mcmc_sample <-  lapply(strsplit(as.character(melted.df$variable),split = "\\."),"[",2)
-      melted.df <- melted.df[,c(1,3,4,5)]
-      melted.df <- pivot_wider(melted.df,names_from=cluster,values_from=value)
-      melted.df <- cbind(data.frame(obs_alpha=rep(rowSums(fitTF[[formu]]$mclassicscale$Y),1000)),melted.df) 
-      colsid <- colnames(melted.df)[grep("Cluster",colnames(melted.df))]
-      df2use <- melted.df%>%
-        group_by(mcmc_sample)%>%
-        mutate(across(.cols=starts_with("Cluster"),.fns=~ifelse((.x^2)*obs_alpha<0.5,
-                                                                0,
-                                                                round((.x^2)*obs_alpha,digits=0))))%>%
-        ungroup()%>%
-        reshape2::melt(id.vars=c("obs_alpha","site","mcmc_sample"))
-      names(df2use)[which(names(df2use)=="variable")] <- "cluster"
-      rm(melted.df)
-      gc()
-    }else{
+  
       df2use <- predcomputedreal[[formu]][[i]]%>%
         reshape2::melt()%>%
         rename(mcmc_sample=Var3,
                site=Var1,
                cluster=Var2)%>%
         mutate(value=ifelse(value<0.5,0,round(value,digits=0)))
-    }
-    
+  
     mod_alpha_pred <- df2use%>%
       group_by(site,mcmc_sample)%>%
       summarise(nzeroz=sum(value==0),
@@ -783,7 +824,7 @@ for(formu in names(fitTF)){
       ylab("ASVs ricness")+
       geom_point(aes(x=site,y=alphadiv),fill="darkorange",size=2,shape=23,color="coral1")+
       ggtitle(i)
-    ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/subset/predalpha/predalpha_",i,".png"),alpha_pred_plot[[formu]][[i]],width=8,height = 5)
+    ggsave(paste0("R_scripts/paper_16s/Hmsc_pipeline/results/subset_newrand/predalpha/predalpha_",i,".png"),alpha_pred_plot[[formu]][[i]],width=8,height = 5)
     
     
     
